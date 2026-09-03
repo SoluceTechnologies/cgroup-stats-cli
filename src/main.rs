@@ -1,18 +1,7 @@
-mod cli;
-
-use clap::{CommandFactory, Parser};
-use cli::{Cli, Commands};
-
+use clap::Parser;
+use cgroup_stats_cli::cli::Args;
 
 fn main() {
-    let cli = Cli::parse();
-
-    match cli.command {
-        Some(xxxxx),
-        None => {
-            Cli::command()
-                .print_help()
-                .expect("An error occurred while printing help");
-        }
-    }
+    let args = Args::parse();
+    println!("{}", args.path);
 }
