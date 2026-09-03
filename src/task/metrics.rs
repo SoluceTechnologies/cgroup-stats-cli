@@ -16,6 +16,9 @@ pub fn parse_cpu_max(text: &str) -> Option<(u64, u64)> {
     let mut it = text.split_whitespace();
     let quota = it.next()?;
     let period = it.next()?.parse().ok()?;
+    if period == 0 {
+        return None;
+    }
     Some((quota.parse().ok()?, period))
 }
 
@@ -59,7 +62,7 @@ pub fn parse_io_stat(text: &str) -> Vec<RawIo> {
 /// Saturating: a cgroup recreated between samples resets its counters, which
 /// would otherwise underflow. Zero elapsed time yields zero, not infinity.
 pub fn rate(before: u64, after: u64, elapsed_secs: f64) -> f64 {
-    if elapsed_secs <= 0.0 {
+    if !(elapsed_secs > 0.0) {
         return 0.0;
     }
     after.saturating_sub(before) as f64 / elapsed_secs
@@ -119,6 +122,13 @@ core_sched.force_idle_usec 0
         assert_eq!(parse_cpu_max(""), None);
         assert_eq!(parse_cpu_max("200000"), None);
         assert_eq!(parse_cpu_max("abc def"), None);
+    }
+
+    #[test]
+    fn cpu_max_with_a_zero_period_is_none() {
+        // A parseable but nonsensical period would hand the caller a
+        // divide-by-zero. Reject it here rather than trusting every caller.
+        assert_eq!(parse_cpu_max("200000 0\n"), None);
     }
 
     #[test]
@@ -185,5 +195,13 @@ cost.usage=123 cost.wait=0 cost.indebt=0 cost.indelay=0\n";
     #[test]
     fn rate_of_zero_elapsed_is_zero_not_infinity() {
         assert_eq!(rate(0, 100, 0.0), 0.0);
+    }
+
+    #[test]
+    fn rate_of_non_finite_elapsed_is_zero() {
+        // `elapsed <= 0.0` is false for NaN, so the guard must be written as
+        // the negation of the positive case to catch it.
+        assert_eq!(rate(0, 100, f64::NAN), 0.0);
+        assert_eq!(rate(0, 100, -1.0), 0.0);
     }
 }
