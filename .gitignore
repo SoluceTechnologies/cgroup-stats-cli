@@ -1,0 +1,11 @@
+/target
+.idea
+.claude
+.codex
+/docs/
+.DS_Store
+.env
+/docs
+
+# SDD workspace scratch (ledger, briefs, review packages)
+/.superpowers/
