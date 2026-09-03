@@ -18,6 +18,12 @@ pub struct Stats {
 }
 
 pub fn collect(path: &str, sel: Selection, interval: f64) -> Result<Stats, Box<dyn Error>> {
+    // Duration::from_secs_f64 panics on a negative, NaN or infinite value, and
+    // `collect` is public — it must not depend on the CLI having validated first.
+    if !interval.is_finite() || interval <= 0.0 {
+        return Err(format!("interval must be a positive, finite number of seconds, got {interval}").into());
+    }
+
     if !hierarchies::is_cgroup2_unified_mode() {
         return Err("cgroup v1 not supported (unified/v2 only)".into());
     }
@@ -134,5 +140,17 @@ mod tests {
         }
         let e = collect("definitely/not/a/real/cgroup", ALL, 0.05).unwrap_err();
         assert!(e.to_string().contains("cgroup not found"), "got: {e}");
+    }
+
+    #[test]
+    fn a_non_finite_or_non_positive_interval_is_an_error_not_a_panic() {
+        // No v2() guard: the interval check runs before any host inspection,
+        // so this test is meaningful on every machine.
+        for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, -1.0, 0.0] {
+            assert!(
+                collect("", ALL, bad).is_err(),
+                "interval {bad} should be rejected, not panic"
+            );
+        }
     }
 }
