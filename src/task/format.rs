@@ -10,6 +10,13 @@ pub fn iec(bytes: u64) -> String {
         v /= 1024.0;
         i += 1;
     }
+    // The unit is chosen before the value is rounded, so a mantissa just under
+    // the threshold rounds back up to 1024.0 and prints as "1024.0K" instead of
+    // "1.0M". Re-check against the rounded value.
+    if i < UNITS.len() - 1 && (v * 10.0).round() / 10.0 >= 1024.0 {
+        v /= 1024.0;
+        i += 1;
+    }
     if i == 0 {
         format!("{bytes}B")
     } else {
@@ -102,17 +109,24 @@ mod tests {
         assert_eq!(iec(1024 * 1024), "1.0M");
         assert_eq!(iec(4 * 1024 * 1024 * 1024), "4.0G");
         assert_eq!(iec(2 * 1024_u64.pow(4)), "2.0T");
+        // A value one byte below a unit boundary must not round up into a
+        // "1024.0" mantissa of the smaller unit.
+        assert_eq!(iec(1_048_575), "1.0M");
+        assert_eq!(iec(1_073_741_823), "1.0G");
+        assert_eq!(iec(1_099_511_627_775), "1.0T");
+        // The ladder stops at the last unit rather than indexing past it.
+        assert_eq!(iec(u64::MAX), "16384.0P");
     }
 
     #[test]
     fn human_renders_every_metric() {
         let out = human(&stats());
-        assert!(out.contains("RAM:"), "{out}");
-        assert!(out.contains("1.2G"), "{out}");
-        assert!(out.contains("4.0G"), "{out}");
-        assert!(out.contains("0.53 / 2.00 cores"), "{out}");
-        assert!(out.contains("42 / 512"), "{out}");
-        assert!(out.contains("sda"), "{out}");
+        // Pin the full line, not loose substrings: checking "1.2G" and "4.0G"
+        // independently would pass even if current and max were swapped.
+        assert!(out.contains("RAM:  1.2G / 4.0G"), "{out}");
+        assert!(out.contains("CPU:  0.53 / 2.00 cores"), "{out}");
+        assert!(out.contains("PIDs: 42 / 512"), "{out}");
+        assert!(out.contains("sda  r 1.2M/s  w 340.0K/s"), "{out}");
     }
 
     #[test]
