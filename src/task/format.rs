@@ -1,4 +1,5 @@
 use crate::task::Stats;
+use crate::task::metrics::{Io, IoDevice};
 use comfy_table::{Table, presets::UTF8_FULL};
 use serde_json::{Map, Value, json};
 use std::fmt::Write;
@@ -84,16 +85,18 @@ pub fn table(s: &Stats) -> String {
     }
     if let Some(i) = &s.io {
         match i {
-            Ok(i) if i.devices.is_empty() => {
-                t.add_row(vec!["IO", "no activity", ""]);
-            }
             Ok(i) => {
-                for d in &i.devices {
-                    t.add_row(vec![
-                        format!("IO {}", d.device),
-                        format!("r {}/s", iec(d.read_bytes_per_sec as u64)),
-                        format!("w {}/s", iec(d.write_bytes_per_sec as u64)),
-                    ]);
+                let active = active_devices(i);
+                if active.is_empty() {
+                    t.add_row(vec!["IO", "no activity", ""]);
+                } else {
+                    for d in active {
+                        t.add_row(vec![
+                            format!("IO {}", d.device),
+                            format!("r {}/s", iec(d.read_bytes_per_sec as u64)),
+                            format!("w {}/s", iec(d.write_bytes_per_sec as u64)),
+                        ]);
+                    }
                 }
             }
             Err(e) => {
@@ -102,6 +105,20 @@ pub fn table(s: &Stats) -> String {
         };
     }
     t.to_string()
+}
+
+/// Devices that moved data during the sampling window.
+///
+/// A leaf cgroup's `io.stat` lists only devices that cgroup has touched, but
+/// the root's enumerates every block device on the host — dozens of unbroken
+/// zero rows with any real traffic buried among them. The human-facing
+/// renderers exist to be glanceable and a rate view's job is showing what
+/// moves, so they filter. `json` keeps every device.
+fn active_devices(io: &Io) -> Vec<&IoDevice> {
+    io.devices
+        .iter()
+        .filter(|d| d.read_bytes_per_sec > 0.0 || d.write_bytes_per_sec > 0.0)
+        .collect()
 }
 
 pub fn human(s: &Stats) -> String {
@@ -135,18 +152,22 @@ pub fn human(s: &Stats) -> String {
     }
     if let Some(i) = &s.io {
         match i {
-            Ok(i) if i.devices.is_empty() => writeln!(o, "IO:   no activity").unwrap(),
             Ok(i) => {
-                for (n, d) in i.devices.iter().enumerate() {
-                    let label = if n == 0 { "IO:  " } else { "     " };
-                    writeln!(
-                        o,
-                        "{label} {}  r {}/s  w {}/s",
-                        d.device,
-                        iec(d.read_bytes_per_sec as u64),
-                        iec(d.write_bytes_per_sec as u64)
-                    )
-                    .unwrap()
+                let active = active_devices(i);
+                if active.is_empty() {
+                    writeln!(o, "IO:   no activity").unwrap()
+                } else {
+                    for (n, d) in active.iter().enumerate() {
+                        let label = if n == 0 { "IO:  " } else { "     " };
+                        writeln!(
+                            o,
+                            "{label} {}  r {}/s  w {}/s",
+                            d.device,
+                            iec(d.read_bytes_per_sec as u64),
+                            iec(d.write_bytes_per_sec as u64)
+                        )
+                        .unwrap()
+                    }
                 }
             }
             Err(e) => writeln!(o, "IO:   n/a ({e})").unwrap(),
@@ -276,5 +297,63 @@ mod tests {
         assert!(out.contains("RAM"), "{out}");
         assert!(out.contains("1.2G"), "{out}");
         assert!(out.contains("sda"), "{out}");
+    }
+
+    #[test]
+    fn table_marks_an_unavailable_metric_and_says_why() {
+        let mut s = stats();
+        s.memory = Some(Err("memory.current not present".into()));
+        let out = table(&s);
+        assert!(out.contains("n/a"), "{out}");
+        assert!(out.contains("memory.current not present"), "{out}");
+    }
+
+    #[test]
+    fn table_omits_unrequested_metrics_entirely() {
+        let mut s = stats();
+        s.pids = None;
+        s.io = None;
+        let out = table(&s);
+        assert!(!out.contains("PIDs"), "{out}");
+        assert!(!out.contains("IO"), "{out}");
+    }
+
+    #[test]
+    fn both_renderers_hide_idle_devices_but_json_keeps_them() {
+        use crate::task::metrics::IoDevice;
+        let mut s = stats();
+        s.io = Some(Ok(Io {
+            devices: vec![
+                IoDevice { device: "loop0".into(), read_bytes_per_sec: 0.0, write_bytes_per_sec: 0.0 },
+                IoDevice { device: "nvme0n1".into(), read_bytes_per_sec: 2048.0, write_bytes_per_sec: 0.0 },
+            ],
+        }));
+        let h = human(&s);
+        assert!(h.contains("nvme0n1"), "{h}");
+        assert!(!h.contains("loop0"), "idle device must not appear in human output: {h}");
+
+        let t = table(&s);
+        assert!(t.contains("nvme0n1"), "{t}");
+        assert!(!t.contains("loop0"), "idle device must not appear in table output: {t}");
+
+        // JSON is the fidelity layer and keeps every device.
+        let v: serde_json::Value = serde_json::from_str(&json(&s)).unwrap();
+        let devs = v["io"]["devices"].as_array().unwrap();
+        assert_eq!(devs.len(), 2, "json must keep idle devices: {v}");
+    }
+
+    #[test]
+    fn all_devices_idle_renders_as_no_activity() {
+        use crate::task::metrics::IoDevice;
+        let mut s = stats();
+        s.io = Some(Ok(Io {
+            devices: vec![IoDevice {
+                device: "loop0".into(),
+                read_bytes_per_sec: 0.0,
+                write_bytes_per_sec: 0.0,
+            }],
+        }));
+        assert!(human(&s).contains("no activity"), "{}", human(&s));
+        assert!(table(&s).contains("no activity"), "{}", table(&s));
     }
 }
