@@ -1,4 +1,6 @@
 use crate::task::Stats;
+use comfy_table::{Table, presets::UTF8_FULL};
+use serde_json::{Map, Value, json};
 use std::fmt::Write;
 
 /// Format bytes with IEC units, matching `numfmt --to=iec`.
@@ -26,6 +28,80 @@ pub fn iec(bytes: u64) -> String {
 
 fn limit(v: Option<u64>) -> String {
     v.map_or("unlimited".to_string(), iec)
+}
+
+/// Only readings appear. A metric that was not requested, or was requested but
+/// unavailable, is omitted — a consumer checking for a key is a cleaner
+/// contract than a sentinel value.
+pub fn json(s: &Stats) -> String {
+    let mut m = Map::new();
+    m.insert("path".into(), json!(s.path));
+    if let Some(Ok(v)) = &s.cpu {
+        m.insert("cpu".into(), serde_json::to_value(v).unwrap());
+    }
+    if let Some(Ok(v)) = &s.memory {
+        m.insert("memory".into(), serde_json::to_value(v).unwrap());
+    }
+    if let Some(Ok(v)) = &s.pids {
+        m.insert("pids".into(), serde_json::to_value(v).unwrap());
+    }
+    if let Some(Ok(v)) = &s.io {
+        m.insert("io".into(), serde_json::to_value(v).unwrap());
+    }
+    serde_json::to_string_pretty(&Value::Object(m)).unwrap()
+}
+
+pub fn table(s: &Stats) -> String {
+    let mut t = Table::new();
+    t.load_preset(UTF8_FULL)
+        .set_header(vec!["Metric", "Current", "Limit"]);
+
+    if let Some(m) = &s.memory {
+        match m {
+            Ok(m) => t.add_row(vec!["RAM".into(), iec(m.current), limit(m.max)]),
+            Err(e) => t.add_row(vec!["RAM".into(), "n/a".into(), e.clone()]),
+        };
+    }
+    if let Some(c) = &s.cpu {
+        match c {
+            Ok(c) => t.add_row(vec![
+                "CPU (cores)".into(),
+                format!("{:.2}", c.used_cores),
+                c.max_cores.map_or("unlimited".into(), |v| format!("{v:.2}")),
+            ]),
+            Err(e) => t.add_row(vec!["CPU (cores)".into(), "n/a".into(), e.clone()]),
+        };
+    }
+    if let Some(p) = &s.pids {
+        match p {
+            Ok(p) => t.add_row(vec![
+                "PIDs".into(),
+                p.current.to_string(),
+                p.max.map_or("unlimited".into(), |v| v.to_string()),
+            ]),
+            Err(e) => t.add_row(vec!["PIDs".into(), "n/a".into(), e.clone()]),
+        };
+    }
+    if let Some(i) = &s.io {
+        match i {
+            Ok(i) if i.devices.is_empty() => {
+                t.add_row(vec!["IO", "no activity", ""]);
+            }
+            Ok(i) => {
+                for d in &i.devices {
+                    t.add_row(vec![
+                        format!("IO {}", d.device),
+                        format!("r {}/s", iec(d.read_bytes_per_sec as u64)),
+                        format!("w {}/s", iec(d.write_bytes_per_sec as u64)),
+                    ]);
+                }
+            }
+            Err(e) => {
+                t.add_row(vec!["IO".into(), "n/a".into(), e.clone()]);
+            }
+        };
+    }
+    t.to_string()
 }
 
 pub fn human(s: &Stats) -> String {
@@ -165,5 +241,40 @@ mod tests {
         let out = human(&s);
         assert!(out.contains("IO:"), "{out}");
         assert!(out.contains("no activity"), "{out}");
+    }
+
+    #[test]
+    fn json_uses_raw_values_and_null_for_unlimited() {
+        let mut s = stats();
+        s.memory = Some(Ok(Memory { current: 8192, max: None }));
+        let v: serde_json::Value = serde_json::from_str(&json(&s)).unwrap();
+        assert_eq!(v["memory"]["current"], 8192);
+        assert!(v["memory"]["max"].is_null());
+        assert_eq!(v["pids"]["current"], 42);
+    }
+
+    #[test]
+    fn json_omits_unrequested_metrics() {
+        let mut s = stats();
+        s.io = None;
+        let v: serde_json::Value = serde_json::from_str(&json(&s)).unwrap();
+        assert!(v.get("io").is_none(), "unrequested metrics must be absent: {v}");
+        assert!(v.get("memory").is_some());
+    }
+
+    #[test]
+    fn json_is_valid_when_a_metric_is_unavailable() {
+        let mut s = stats();
+        s.memory = Some(Err("memory.current not present".into()));
+        let v: serde_json::Value = serde_json::from_str(&json(&s)).unwrap();
+        assert!(v.get("memory").is_none(), "unavailable metrics are omitted: {v}");
+    }
+
+    #[test]
+    fn table_contains_the_values() {
+        let out = table(&stats());
+        assert!(out.contains("RAM"), "{out}");
+        assert!(out.contains("1.2G"), "{out}");
+        assert!(out.contains("sda"), "{out}");
     }
 }

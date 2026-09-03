@@ -73,32 +73,32 @@ use cgroups_rs::fs::pid::PidController;
 use cgroups_rs::fs::{Cgroup, MaxValue};
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct Cpu {
     pub used_cores: f64,
     pub max_cores: Option<f64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct Memory {
     pub current: u64,
     pub max: Option<u64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct Pids {
     pub current: u64,
     pub max: Option<u64>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct IoDevice {
     pub device: String,
     pub read_bytes_per_sec: f64,
     pub write_bytes_per_sec: f64,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct Io {
     pub devices: Vec<IoDevice>,
 }
