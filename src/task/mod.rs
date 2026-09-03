@@ -21,7 +21,10 @@ pub fn collect(path: &str, sel: Selection, interval: f64) -> Result<Stats, Box<d
     // Duration::from_secs_f64 panics on a negative, NaN or infinite value, and
     // `collect` is public — it must not depend on the CLI having validated first.
     if !interval.is_finite() || interval <= 0.0 {
-        return Err(format!("interval must be a positive, finite number of seconds, got {interval}").into());
+        return Err(format!(
+            "interval must be a positive, finite number of seconds, got {interval}"
+        )
+        .into());
     }
 
     if !hierarchies::is_cgroup2_unified_mode() {
@@ -60,13 +63,14 @@ pub fn collect(path: &str, sel: Selection, interval: f64) -> Result<Stats, Box<d
         ),
     };
 
-    let io = match io_before {
-        None => None,
-        Some(Err(e)) => Some(Err(e)),
-        Some(Ok(before)) => Some(metrics::read_io(&dir).map(|after| {
-            metrics::collect_io(&metrics::sys_dev_block(), &before, &after, elapsed)
-        })),
-    };
+    let io =
+        match io_before {
+            None => None,
+            Some(Err(e)) => Some(Err(e)),
+            Some(Ok(before)) => Some(metrics::read_io(&dir).map(|after| {
+                metrics::collect_io(&metrics::sys_dev_block(), &before, &after, elapsed)
+            })),
+        };
 
     Ok(Stats {
         path: if rel.is_empty() { "/".into() } else { rel },
@@ -87,8 +91,18 @@ mod tests {
         cgroups_rs::fs::hierarchies::is_cgroup2_unified_mode()
     }
 
-    const ALL: Selection = Selection { cpu: true, mem: true, pids: true, io: true };
-    const MEM: Selection = Selection { cpu: false, mem: true, pids: false, io: false };
+    const ALL: Selection = Selection {
+        cpu: true,
+        mem: true,
+        pids: true,
+        io: true,
+    };
+    const MEM: Selection = Selection {
+        cpu: false,
+        mem: true,
+        pids: false,
+        io: false,
+    };
 
     #[test]
     fn memory_only_does_not_sleep() {

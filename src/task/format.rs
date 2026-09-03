@@ -68,7 +68,8 @@ pub fn table(s: &Stats) -> String {
             Ok(c) => t.add_row(vec![
                 "CPU (cores)".into(),
                 format!("{:.2}", c.used_cores),
-                c.max_cores.map_or("unlimited".into(), |v| format!("{v:.2}")),
+                c.max_cores
+                    .map_or("unlimited".into(), |v| format!("{v:.2}")),
             ]),
             Err(e) => t.add_row(vec!["CPU (cores)".into(), "n/a".into(), e.clone()]),
         };
@@ -184,9 +185,18 @@ mod tests {
     fn stats() -> Stats {
         Stats {
             path: "system.slice/foo.service".into(),
-            cpu: Some(Ok(Cpu { used_cores: 0.53, max_cores: Some(2.0) })),
-            memory: Some(Ok(Memory { current: 1_288_490_188, max: Some(4_294_967_296) })),
-            pids: Some(Ok(Pids { current: 42, max: Some(512) })),
+            cpu: Some(Ok(Cpu {
+                used_cores: 0.53,
+                max_cores: Some(2.0),
+            })),
+            memory: Some(Ok(Memory {
+                current: 1_288_490_188,
+                max: Some(4_294_967_296),
+            })),
+            pids: Some(Ok(Pids {
+                current: 42,
+                max: Some(512),
+            })),
             io: Some(Ok(Io {
                 devices: vec![IoDevice {
                     device: "sda".into(),
@@ -229,8 +239,14 @@ mod tests {
     #[test]
     fn unlimited_renders_as_the_word_unlimited() {
         let mut s = stats();
-        s.memory = Some(Ok(Memory { current: 8192, max: None }));
-        s.cpu = Some(Ok(Cpu { used_cores: 0.1, max_cores: None }));
+        s.memory = Some(Ok(Memory {
+            current: 8192,
+            max: None,
+        }));
+        s.cpu = Some(Ok(Cpu {
+            used_cores: 0.1,
+            max_cores: None,
+        }));
         let out = human(&s);
         assert!(out.contains("8.0K / unlimited"), "{out}");
         assert!(out.contains("0.10 / unlimited cores"), "{out}");
@@ -267,7 +283,10 @@ mod tests {
     #[test]
     fn json_uses_raw_values_and_null_for_unlimited() {
         let mut s = stats();
-        s.memory = Some(Ok(Memory { current: 8192, max: None }));
+        s.memory = Some(Ok(Memory {
+            current: 8192,
+            max: None,
+        }));
         let v: serde_json::Value = serde_json::from_str(&json(&s)).unwrap();
         assert_eq!(v["memory"]["current"], 8192);
         assert!(v["memory"]["max"].is_null());
@@ -279,7 +298,10 @@ mod tests {
         let mut s = stats();
         s.io = None;
         let v: serde_json::Value = serde_json::from_str(&json(&s)).unwrap();
-        assert!(v.get("io").is_none(), "unrequested metrics must be absent: {v}");
+        assert!(
+            v.get("io").is_none(),
+            "unrequested metrics must be absent: {v}"
+        );
         assert!(v.get("memory").is_some());
     }
 
@@ -288,7 +310,10 @@ mod tests {
         let mut s = stats();
         s.memory = Some(Err("memory.current not present".into()));
         let v: serde_json::Value = serde_json::from_str(&json(&s)).unwrap();
-        assert!(v.get("memory").is_none(), "unavailable metrics are omitted: {v}");
+        assert!(
+            v.get("memory").is_none(),
+            "unavailable metrics are omitted: {v}"
+        );
     }
 
     #[test]
@@ -324,17 +349,31 @@ mod tests {
         let mut s = stats();
         s.io = Some(Ok(Io {
             devices: vec![
-                IoDevice { device: "loop0".into(), read_bytes_per_sec: 0.0, write_bytes_per_sec: 0.0 },
-                IoDevice { device: "nvme0n1".into(), read_bytes_per_sec: 2048.0, write_bytes_per_sec: 0.0 },
+                IoDevice {
+                    device: "loop0".into(),
+                    read_bytes_per_sec: 0.0,
+                    write_bytes_per_sec: 0.0,
+                },
+                IoDevice {
+                    device: "nvme0n1".into(),
+                    read_bytes_per_sec: 2048.0,
+                    write_bytes_per_sec: 0.0,
+                },
             ],
         }));
         let h = human(&s);
         assert!(h.contains("nvme0n1"), "{h}");
-        assert!(!h.contains("loop0"), "idle device must not appear in human output: {h}");
+        assert!(
+            !h.contains("loop0"),
+            "idle device must not appear in human output: {h}"
+        );
 
         let t = table(&s);
         assert!(t.contains("nvme0n1"), "{t}");
-        assert!(!t.contains("loop0"), "idle device must not appear in table output: {t}");
+        assert!(
+            !t.contains("loop0"),
+            "idle device must not appear in table output: {t}"
+        );
 
         // JSON is the fidelity layer and keeps every device.
         let v: serde_json::Value = serde_json::from_str(&json(&s)).unwrap();

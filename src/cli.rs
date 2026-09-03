@@ -49,7 +49,9 @@ fn positive_secs(s: &str) -> Result<f64, String> {
     if v.is_finite() && v > 0.0 {
         Ok(v)
     } else {
-        Err(format!("interval must be a positive number of seconds, got `{s}`"))
+        Err(format!(
+            "interval must be a positive number of seconds, got `{s}`"
+        ))
     }
 }
 
@@ -74,9 +76,19 @@ impl Selection {
 impl Args {
     pub fn selection(&self) -> Selection {
         if self.cpu || self.mem || self.pids || self.io {
-            Selection { cpu: self.cpu, mem: self.mem, pids: self.pids, io: self.io }
+            Selection {
+                cpu: self.cpu,
+                mem: self.mem,
+                pids: self.pids,
+                io: self.io,
+            }
         } else {
-            Selection { cpu: true, mem: true, pids: true, io: true }
+            Selection {
+                cpu: true,
+                mem: true,
+                pids: true,
+                io: true,
+            }
         }
     }
 }
@@ -166,8 +178,14 @@ mod tests {
         let root = Path::new("/sys/fs/cgroup");
         // These are siblings of the root, not children. Stripping the text
         // prefix would silently turn them into bogus child paths.
-        assert_eq!(normalize_path("/sys/fs/cgroup-old/svc.slice", root), "sys/fs/cgroup-old/svc.slice");
-        assert_eq!(normalize_path("/sys/fs/cgroup2/foo", root), "sys/fs/cgroup2/foo");
+        assert_eq!(
+            normalize_path("/sys/fs/cgroup-old/svc.slice", root),
+            "sys/fs/cgroup-old/svc.slice"
+        );
+        assert_eq!(
+            normalize_path("/sys/fs/cgroup2/foo", root),
+            "sys/fs/cgroup2/foo"
+        );
     }
 
     #[test]
