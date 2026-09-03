@@ -68,6 +68,153 @@ pub fn rate(before: u64, after: u64, elapsed_secs: f64) -> f64 {
     after.saturating_sub(before) as f64 / elapsed_secs
 }
 
+use cgroups_rs::fs::memory::MemController;
+use cgroups_rs::fs::pid::PidController;
+use cgroups_rs::fs::{Cgroup, MaxValue};
+use std::path::{Path, PathBuf};
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Cpu {
+    pub used_cores: f64,
+    pub max_cores: Option<f64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Memory {
+    pub current: u64,
+    pub max: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Pids {
+    pub current: u64,
+    pub max: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct IoDevice {
+    pub device: String,
+    pub read_bytes_per_sec: f64,
+    pub write_bytes_per_sec: f64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Io {
+    pub devices: Vec<IoDevice>,
+}
+
+/// Fail early when a metric's backing files are absent.
+///
+/// This exists because cgroups-rs cannot be asked whether a read succeeded:
+/// `memory_stat()` returns `usage_in_bytes == 0` for a missing `memory.current`,
+/// and `get_mem()` maps a failed read of `memory.max` onto `MaxValue::Max`,
+/// which is identical to a genuine "unlimited". Without this precheck the root
+/// cgroup reports `0 / unlimited` instead of being reported unavailable.
+pub fn require(dir: &Path, files: &[&str]) -> Result<(), String> {
+    for f in files {
+        if !dir.join(f).exists() {
+            return Err(format!("{f} not present"));
+        }
+    }
+    Ok(())
+}
+
+/// `MaxValue::Max` and any negative value both mean "no limit".
+pub fn max_value_to_option(v: Option<MaxValue>) -> Option<u64> {
+    match v {
+        None | Some(MaxValue::Max) => None,
+        Some(MaxValue::Value(n)) if n < 0 => None,
+        Some(MaxValue::Value(n)) => Some(n as u64),
+    }
+}
+
+fn read(dir: &Path, file: &str) -> Result<String, String> {
+    std::fs::read_to_string(dir.join(file)).map_err(|e| format!("{file}: {e}"))
+}
+
+pub fn collect_memory(cg: &Cgroup, dir: &Path) -> Result<Memory, String> {
+    require(dir, &["memory.current", "memory.max"])?;
+    let c: &MemController = cg
+        .controller_of()
+        .ok_or_else(|| "memory controller unavailable".to_string())?;
+    let max = c.get_mem().map_err(|e| e.to_string())?.max;
+    Ok(Memory {
+        current: c.memory_stat().usage_in_bytes,
+        max: max_value_to_option(max),
+    })
+}
+
+pub fn collect_pids(cg: &Cgroup, dir: &Path) -> Result<Pids, String> {
+    require(dir, &["pids.current", "pids.max"])?;
+    let c: &PidController = cg
+        .controller_of()
+        .ok_or_else(|| "pids controller unavailable".to_string())?;
+    Ok(Pids {
+        current: c.get_pid_current().map_err(|e| e.to_string())?,
+        max: max_value_to_option(Some(c.get_pid_max().map_err(|e| e.to_string())?)),
+    })
+}
+
+/// One `usage_usec` sample. Read directly rather than through
+/// `CpuController::cpu()`, which returns an empty string on a failed read.
+pub fn read_cpu_usage(dir: &Path) -> Result<u64, String> {
+    let text = read(dir, "cpu.stat")?;
+    parse_flat_key(&text, "usage_usec").ok_or_else(|| "cpu.stat has no usage_usec".to_string())
+}
+
+/// `cpu.max` is absent on the root cgroup, which is not an error: usage is
+/// still meaningful, the limit is simply unknown and reported as unlimited.
+pub fn collect_cpu(dir: &Path, before: u64, after: u64, elapsed: f64) -> Result<Cpu, String> {
+    require(dir, &["cpu.stat"])?;
+    let max_cores = read(dir, "cpu.max")
+        .ok()
+        .and_then(|t| parse_cpu_max(&t))
+        .map(|(q, p)| q as f64 / p as f64);
+    Ok(Cpu {
+        // usage_usec is microseconds of CPU time; dividing by elapsed seconds
+        // and 1e6 gives cores in use.
+        used_cores: rate(before, after, elapsed) / 1_000_000.0,
+        max_cores,
+    })
+}
+
+pub fn read_io(dir: &Path) -> Result<Vec<RawIo>, String> {
+    require(dir, &["io.stat"])?;
+    Ok(parse_io_stat(&read(dir, "io.stat")?))
+}
+
+/// Resolve `major:minor` to a kernel device name via `/sys/dev/block`.
+/// Falls back to the raw `major:minor`; naming never fails the metric.
+pub fn device_name(sys_dev_block: &Path, dev: &str) -> String {
+    std::fs::read_link(sys_dev_block.join(dev))
+        .ok()
+        .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
+        .unwrap_or_else(|| dev.to_string())
+}
+
+pub fn collect_io(sys_dev_block: &Path, before: &[RawIo], after: &[RawIo], elapsed: f64) -> Io {
+    let devices = after
+        .iter()
+        .map(|a| {
+            // A device absent from the first sample started at zero.
+            let b = before.iter().find(|b| b.device == a.device);
+            let (br, bw) = b.map_or((0, 0), |b| (b.rbytes, b.wbytes));
+            IoDevice {
+                device: device_name(sys_dev_block, &a.device),
+                read_bytes_per_sec: rate(br, a.rbytes, elapsed),
+                write_bytes_per_sec: rate(bw, a.wbytes, elapsed),
+            }
+        })
+        .collect();
+    Io { devices }
+}
+
+/// The conventional location for block device symlinks, injected so tests can
+/// point at a directory that does not contain them.
+pub fn sys_dev_block() -> PathBuf {
+    PathBuf::from("/sys/dev/block")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -203,5 +350,114 @@ cost.usage=123 cost.wait=0 cost.indebt=0 cost.indelay=0\n";
         // the negation of the positive case to catch it.
         assert_eq!(rate(0, 100, f64::NAN), 0.0);
         assert_eq!(rate(0, 100, -1.0), 0.0);
+    }
+
+    use std::fs;
+
+    fn tmpdir(name: &str) -> std::path::PathBuf {
+        let d = std::env::temp_dir().join(format!("cgstats-test-{name}"));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    #[test]
+    fn require_passes_when_every_file_is_present() {
+        let d = tmpdir("require-ok");
+        fs::write(d.join("a"), "1").unwrap();
+        fs::write(d.join("b"), "2").unwrap();
+        assert!(require(&d, &["a", "b"]).is_ok());
+    }
+
+    #[test]
+    fn require_names_the_missing_file() {
+        let d = tmpdir("require-missing");
+        fs::write(d.join("a"), "1").unwrap();
+        let err = require(&d, &["a", "b"]).unwrap_err();
+        assert!(err.contains("b"), "error should name the missing file, got: {err}");
+    }
+
+    #[test]
+    fn max_value_max_and_negative_are_unlimited() {
+        assert_eq!(max_value_to_option(Some(MaxValue::Max)), None);
+        assert_eq!(max_value_to_option(Some(MaxValue::Value(-1))), None);
+        assert_eq!(max_value_to_option(None), None);
+        assert_eq!(max_value_to_option(Some(MaxValue::Value(4096))), Some(4096));
+    }
+
+    #[test]
+    fn cpu_usage_comes_from_the_stat_file() {
+        let d = tmpdir("cpu-usage");
+        fs::write(d.join("cpu.stat"), CPU_STAT).unwrap();
+        assert_eq!(read_cpu_usage(&d).unwrap(), 38354643000);
+    }
+
+    #[test]
+    fn cpu_usage_missing_file_is_an_error() {
+        let d = tmpdir("cpu-usage-missing");
+        assert!(read_cpu_usage(&d).is_err());
+    }
+
+    #[test]
+    fn cpu_usage_present_but_keyless_is_an_error() {
+        let d = tmpdir("cpu-usage-keyless");
+        fs::write(d.join("cpu.stat"), "user_usec 5\n").unwrap();
+        assert!(read_cpu_usage(&d).is_err());
+    }
+
+    #[test]
+    fn collect_cpu_computes_cores_from_the_delta() {
+        let d = tmpdir("cpu-cores");
+        fs::write(d.join("cpu.stat"), CPU_STAT).unwrap();
+        fs::write(d.join("cpu.max"), "200000 100000\n").unwrap();
+        // Half a core-second of usage over one wall second.
+        let c = collect_cpu(&d, 1_000_000, 1_500_000, 1.0).unwrap();
+        assert!((c.used_cores - 0.5).abs() < 1e-9, "got {}", c.used_cores);
+        assert_eq!(c.max_cores, Some(2.0));
+    }
+
+    #[test]
+    fn collect_cpu_reports_unlimited_when_cpu_max_is_max() {
+        let d = tmpdir("cpu-unlimited");
+        fs::write(d.join("cpu.stat"), CPU_STAT).unwrap();
+        fs::write(d.join("cpu.max"), "max 100000\n").unwrap();
+        assert_eq!(collect_cpu(&d, 0, 0, 1.0).unwrap().max_cores, None);
+    }
+
+    #[test]
+    fn collect_cpu_without_cpu_max_still_reports_usage() {
+        // The root cgroup has cpu.stat but no cpu.max. Usage is still valid.
+        let d = tmpdir("cpu-no-max");
+        fs::write(d.join("cpu.stat"), CPU_STAT).unwrap();
+        let c = collect_cpu(&d, 0, 1_000_000, 1.0).unwrap();
+        assert!((c.used_cores - 1.0).abs() < 1e-9);
+        assert_eq!(c.max_cores, None);
+    }
+
+    #[test]
+    fn collect_io_pairs_devices_across_samples() {
+        let d = tmpdir("io-pair");
+        let before = parse_io_stat("8:0 rbytes=1000 wbytes=2000 rios=0 wios=0 dbytes=0 dios=0\n");
+        let after = parse_io_stat("8:0 rbytes=3000 wbytes=2500 rios=0 wios=0 dbytes=0 dios=0\n");
+        let io = collect_io(&d, &before, &after, 2.0);
+        assert_eq!(io.devices.len(), 1);
+        assert_eq!(io.devices[0].read_bytes_per_sec, 1000.0);
+        assert_eq!(io.devices[0].write_bytes_per_sec, 250.0);
+    }
+
+    #[test]
+    fn collect_io_treats_a_device_new_in_the_second_sample_as_starting_at_zero() {
+        let d = tmpdir("io-new-dev");
+        let before = parse_io_stat("");
+        let after = parse_io_stat("8:0 rbytes=500 wbytes=0 rios=0 wios=0 dbytes=0 dios=0\n");
+        let io = collect_io(&d, &before, &after, 1.0);
+        assert_eq!(io.devices.len(), 1);
+        assert_eq!(io.devices[0].read_bytes_per_sec, 500.0);
+    }
+
+    #[test]
+    fn device_name_falls_back_to_major_minor_when_unresolvable() {
+        let d = tmpdir("devname");
+        assert_eq!(device_name(&d, "8:0"), "8:0");
     }
 }
