@@ -86,9 +86,9 @@ impl Args {
 /// the running hierarchy rather than a hardcoded prefix, so non-standard mount
 /// points work unchanged.
 pub fn normalize_path(path: &str, root: &Path) -> String {
-    let root = root.to_string_lossy();
-    let p = path.strip_prefix(root.as_ref()).unwrap_or(path);
-    p.trim_matches('/').to_string()
+    let p = Path::new(path);
+    let rel = p.strip_prefix(root).unwrap_or(p);
+    rel.to_string_lossy().trim_matches('/').to_string()
 }
 
 #[cfg(test)]
@@ -159,5 +159,24 @@ mod tests {
         assert!(Args::try_parse_from(["x", "--path", "p", "-i", "0"]).is_err());
         assert!(Args::try_parse_from(["x", "--path", "p", "-i", "-1"]).is_err());
         assert!(Args::try_parse_from(["x", "--path", "p", "-i", "0.5"]).is_ok());
+    }
+
+    #[test]
+    fn normalize_does_not_strip_a_sibling_that_merely_shares_a_prefix() {
+        let root = Path::new("/sys/fs/cgroup");
+        // These are siblings of the root, not children. Stripping the text
+        // prefix would silently turn them into bogus child paths.
+        assert_eq!(normalize_path("/sys/fs/cgroup-old/svc.slice", root), "sys/fs/cgroup-old/svc.slice");
+        assert_eq!(normalize_path("/sys/fs/cgroup2/foo", root), "sys/fs/cgroup2/foo");
+    }
+
+    #[test]
+    fn interval_rejects_non_finite_values() {
+        for bad in ["nan", "NaN", "inf", "infinity", "-inf"] {
+            assert!(
+                Args::try_parse_from(["x", "--path", "p", "-i", bad]).is_err(),
+                "{bad} should be rejected"
+            );
+        }
     }
 }
