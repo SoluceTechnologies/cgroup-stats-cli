@@ -52,7 +52,11 @@ pub fn parse_io_stat(text: &str) -> Vec<RawIo> {
                     _ => {}
                 }
             }
-            Some(RawIo { device: device.to_string(), rbytes: rbytes?, wbytes: wbytes? })
+            Some(RawIo {
+                device: device.to_string(),
+                rbytes: rbytes?,
+                wbytes: wbytes?,
+            })
         })
         .collect()
 }
@@ -62,7 +66,7 @@ pub fn parse_io_stat(text: &str) -> Vec<RawIo> {
 /// Saturating: a cgroup recreated between samples resets its counters, which
 /// would otherwise underflow. Zero elapsed time yields zero, not infinity.
 pub fn rate(before: u64, after: u64, elapsed_secs: f64) -> f64 {
-    if !(elapsed_secs > 0.0) {
+    if !elapsed_secs.is_finite() || elapsed_secs <= 0.0 {
         return 0.0;
     }
     after.saturating_sub(before) as f64 / elapsed_secs
@@ -374,7 +378,10 @@ cost.usage=123 cost.wait=0 cost.indebt=0 cost.indelay=0\n";
         let d = tmpdir("require-missing");
         fs::write(d.join("a"), "1").unwrap();
         let err = require(&d, &["a", "b"]).unwrap_err();
-        assert!(err.contains("b"), "error should name the missing file, got: {err}");
+        assert!(
+            err.contains("b"),
+            "error should name the missing file, got: {err}"
+        );
     }
 
     #[test]
