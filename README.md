@@ -39,6 +39,13 @@ watch -n 2 cgroup-stats-cli --path /sys/fs/cgroup/system.slice/nginx.service
 CPU usage is a rate, so `--cpu` and `--io` sample twice around `--interval`.
 `--mem` and `--pids` alone read once and return immediately.
 
+Human and table output list only devices that moved data during the sampling
+window, and print `no activity` when none did. The root cgroup's `io.stat`
+enumerates every block device on the host, so an unfiltered view there is
+dozens of idle rows with any real traffic buried among them. JSON is the
+fidelity layer and always reports every device, so a consumer can filter for
+itself.
+
 Requires cgroup v2 (unified hierarchy). Metrics whose files are absent — the
 root cgroup has no `memory.current`, for instance — report `n/a` rather than a
 misleading zero.

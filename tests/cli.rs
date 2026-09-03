@@ -88,6 +88,10 @@ fn memory_only_skips_the_sampling_sleep() {
 
 #[test]
 fn a_missing_cgroup_exits_one_with_a_message() {
+    if !is_v2() {
+        eprintln!("skipped: host is not cgroup v2");
+        return;
+    }
     let out = Command::new(bin())
         .args(["--path", "/sys/fs/cgroup/definitely-not-real"])
         .output()
