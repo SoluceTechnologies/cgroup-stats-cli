@@ -8,7 +8,7 @@ fn bin() -> PathBuf {
     if path.ends_with("deps") {
         path.pop();
     }
-    path.join("cgroup-stats-cli")
+    path.join("cgroup-stats")
 }
 
 fn is_v2() -> bool {
