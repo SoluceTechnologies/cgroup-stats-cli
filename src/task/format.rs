@@ -5,9 +5,6 @@ use comfy_table::{Table, presets::UTF8_FULL};
 use serde_json::{Map, Value, json};
 use std::fmt::Write;
 
-/// `memory.high` throttles where `memory.max` OOM-kills, so a cgroup with only
-/// `high` set is capped in practice and must not render as "unlimited". Both
-/// are labelled whenever `high` is set; output is unchanged when it is not.
 fn memory_limits(memory: &Memory) -> String {
     match (memory.high, memory.max) {
         (None, max) => limit(max),
@@ -16,9 +13,6 @@ fn memory_limits(memory: &Memory) -> String {
     }
 }
 
-/// Only readings appear. A metric that was not requested, or was requested but
-/// unavailable, is omitted — a consumer checking for a key is a cleaner
-/// contract than a sentinel value.
 pub fn json(stats: &Stats) -> String {
     let mut object = Map::new();
     object.insert("path".into(), json!(stats.path));
@@ -100,11 +94,7 @@ pub fn table(stats: &Stats) -> String {
     grid.to_string()
 }
 
-/// A leaf cgroup's `io.stat` lists only devices that cgroup has touched, but
-/// the root's enumerates every block device on the host — dozens of unbroken
-/// zero rows with any real traffic buried among them. The human-facing
-/// renderers exist to be glanceable and a rate view's job is showing what
-/// moves, so they filter. `json` keeps every device.
+
 fn active_devices(io: &Io) -> Vec<&IoDevice> {
     io.devices
         .iter()
