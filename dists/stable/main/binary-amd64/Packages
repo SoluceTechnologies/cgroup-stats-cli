@@ -1,0 +1,18 @@
+Package: cgroup-stats-cli
+Architecture: amd64
+Version: 1.2.0-1
+Priority: optional
+Section: utils
+Maintainer: Charles Gauthereau <charles.gauthereau@soluce-technologies.com>
+Installed-Size: 1923
+Depends: libc6
+Filename: pool/main/cgroup-stats-cli_1.2.0-1_amd64.deb
+Size: 621436
+MD5sum: 6b54168abfe0241885adae433dcedf26
+SHA1: f359f10fde39c0ae77d5436cc91d2de037f9ad99
+SHA256: 783c33385d6a04c47960d1f462089a1ac21dbc5bc5a2df4c2008634c4e580916
+SHA512: 05f30335cac4cdcea9fb744c65abc06f882840772578ace16af0088e3f7e8db05a9a1a362e3d3f4c8c0cb3085a611b6237a2d1d334be09aaae438ff15d4b82ad
+Homepage: https://github.com/SoluceTechnologies/cgroup-stats-cli
+Description: A Command Line Interface to manage cgroups
+ A Command Line Interface to manage cgroups.
+

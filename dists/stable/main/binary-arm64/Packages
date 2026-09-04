@@ -1,0 +1,18 @@
+Package: cgroup-stats-cli
+Architecture: arm64
+Version: 1.2.0-1
+Priority: optional
+Section: utils
+Maintainer: Charles Gauthereau <charles.gauthereau@soluce-technologies.com>
+Installed-Size: 1762
+Depends: libc6
+Filename: pool/main/cgroup-stats-cli_1.2.0-1_arm64.deb
+Size: 541288
+MD5sum: 292b55ac4827856a1cbc44437ec7dc33
+SHA1: 51fc828b65669411196c877912db87be09c91ca2
+SHA256: 1bfdb4d07b2b1de49812ffc546a5aa6b15c2f4d848be740f8016eb76d6c237e4
+SHA512: cf84d61b1cca112315f5eed377f022bc2b40b4bde486eeaaf231e47d97e957fcc637ad15de8feadae86b3a214123df572b4adc3a8b3379c48644bbb795f55f5a
+Homepage: https://github.com/SoluceTechnologies/cgroup-stats-cli
+Description: A Command Line Interface to manage cgroups
+ A Command Line Interface to manage cgroups.
+
