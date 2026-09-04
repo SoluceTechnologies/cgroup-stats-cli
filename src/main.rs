@@ -6,9 +6,9 @@ use std::process::ExitCode;
 fn main() -> ExitCode {
     let args = Args::parse();
     let stats = match collect(&args.path, args.selection(), args.interval) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("error: {e}");
+        Ok(collected) => collected,
+        Err(error) => {
+            eprintln!("error: {error}");
             return ExitCode::FAILURE;
         }
     };

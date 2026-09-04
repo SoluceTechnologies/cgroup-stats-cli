@@ -8,17 +8,17 @@ fn clap_definition_is_valid() {
 
 #[test]
 fn no_metric_flags_selects_everything() {
-    let a = Args::parse_from(["x", "--path", "/sys/fs/cgroup"]);
-    let s = a.selection();
-    assert!(s.cpu && s.mem && s.pids && s.io);
+    let args = Args::parse_from(["x", "--path", "/sys/fs/cgroup"]);
+    let selection = args.selection();
+    assert!(selection.cpu && selection.mem && selection.pids && selection.io);
 }
 
 #[test]
 fn explicit_flags_select_only_those() {
-    let a = Args::parse_from(["x", "--path", "p", "--cpu", "--mem"]);
-    let s = a.selection();
-    assert!(s.cpu && s.mem);
-    assert!(!s.pids && !s.io);
+    let args = Args::parse_from(["x", "--path", "p", "--cpu", "--mem"]);
+    let selection = args.selection();
+    assert!(selection.cpu && selection.mem);
+    assert!(!selection.pids && !selection.io);
 }
 
 #[test]

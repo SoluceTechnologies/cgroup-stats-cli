@@ -7,16 +7,16 @@ use std::path::{Path, PathBuf};
 /// which is identical to a genuine "unlimited". Without this precheck the root
 /// cgroup reports `0 / unlimited` instead of being reported unavailable.
 pub fn require(dir: &Path, files: &[&str]) -> Result<(), String> {
-    for f in files {
-        if !dir.join(f).exists() {
-            return Err(format!("{f} not present"));
+    for file in files {
+        if !dir.join(file).exists() {
+            return Err(format!("{file} not present"));
         }
     }
     Ok(())
 }
 
 pub(crate) fn read(dir: &Path, file: &str) -> Result<String, String> {
-    std::fs::read_to_string(dir.join(file)).map_err(|e| format!("{file}: {e}"))
+    std::fs::read_to_string(dir.join(file)).map_err(|err| format!("{file}: {err}"))
 }
 
 /// Resolve `major:minor` to a kernel device name via `/sys/dev/block`, falling
@@ -24,7 +24,11 @@ pub(crate) fn read(dir: &Path, file: &str) -> Result<String, String> {
 pub fn device_name(sys_dev_block: &Path, dev: &str) -> String {
     std::fs::read_link(sys_dev_block.join(dev))
         .ok()
-        .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
+        .and_then(|target| {
+            target
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+        })
         .unwrap_or_else(|| dev.to_string())
 }
 
@@ -39,7 +43,7 @@ pub fn sys_dev_block() -> PathBuf {
 /// sibling that merely shares the root's leading characters
 /// (`/sys/fs/cgroup2/foo`) is not silently rewritten into a child of the root.
 pub fn normalize_path(path: &str, root: &Path) -> String {
-    let p = Path::new(path);
-    let rel = p.strip_prefix(root).unwrap_or(p);
-    rel.to_string_lossy().trim_matches('/').to_string()
+    let full = Path::new(path);
+    let relative = full.strip_prefix(root).unwrap_or(full);
+    relative.to_string_lossy().trim_matches('/').to_string()
 }

@@ -4,23 +4,23 @@
 /// columns do not jump around under `watch`.
 pub fn iec(bytes: u64) -> String {
     const UNITS: [&str; 6] = ["B", "K", "M", "G", "T", "P"];
-    let mut v = bytes as f64;
-    let mut i = 0;
-    while v >= 1024.0 && i < UNITS.len() - 1 {
-        v /= 1024.0;
-        i += 1;
+    let mut value = bytes as f64;
+    let mut unit = 0;
+    while value >= 1024.0 && unit < UNITS.len() - 1 {
+        value /= 1024.0;
+        unit += 1;
     }
-    if i < UNITS.len() - 1 && (v * 10.0).round() / 10.0 >= 1024.0 {
-        v /= 1024.0;
-        i += 1;
+    if unit < UNITS.len() - 1 && (value * 10.0).round() / 10.0 >= 1024.0 {
+        value /= 1024.0;
+        unit += 1;
     }
-    if i == 0 {
+    if unit == 0 {
         format!("{bytes}B")
     } else {
-        format!("{v:.1}{}", UNITS[i])
+        format!("{value:.1}{}", UNITS[unit])
     }
 }
 
-pub(crate) fn limit(v: Option<u64>) -> String {
-    v.map_or("unlimited".to_string(), iec)
+pub(crate) fn limit(bytes: Option<u64>) -> String {
+    bytes.map_or("unlimited".to_string(), iec)
 }

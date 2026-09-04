@@ -4,12 +4,12 @@ use std::time::Instant;
 
 fn bin() -> PathBuf {
     // target/debug/deps/<test binary> -> target/debug/cgroup-stats-cli
-    let mut p = std::env::current_exe().unwrap();
-    p.pop();
-    if p.ends_with("deps") {
-        p.pop();
+    let mut path = std::env::current_exe().unwrap();
+    path.pop();
+    if path.ends_with("deps") {
+        path.pop();
     }
-    p.join("cgroup-stats-cli")
+    path.join("cgroup-stats-cli")
 }
 
 fn is_v2() -> bool {
@@ -20,9 +20,9 @@ fn is_v2() -> bool {
 /// end-to-end check. Returns None when nothing suitable exists.
 fn leaf() -> Option<PathBuf> {
     let root = PathBuf::from("/sys/fs/cgroup");
-    std::fs::read_dir(&root).ok()?.flatten().find_map(|e| {
-        let p = e.path();
-        (p.is_dir() && p.join("cpu.max").exists()).then_some(p)
+    std::fs::read_dir(&root).ok()?.flatten().find_map(|entry| {
+        let path = entry.path();
+        (path.is_dir() && path.join("cpu.max").exists()).then_some(path)
     })
 }
 
@@ -45,9 +45,9 @@ fn reports_every_metric_for_a_real_leaf_cgroup() {
         "stderr: {}",
         String::from_utf8_lossy(&out.stderr)
     );
-    let s = String::from_utf8_lossy(&out.stdout);
+    let stdout = String::from_utf8_lossy(&out.stdout);
     for want in ["RAM:", "CPU:", "PIDs:", "IO:"] {
-        assert!(s.contains(want), "missing {want} in:\n{s}");
+        assert!(stdout.contains(want), "missing {want} in:\n{stdout}");
     }
 }
 
@@ -62,8 +62,8 @@ fn json_output_parses() {
         .args(["--path", leaf.to_str().unwrap(), "-i", "0.1", "-f", "json"])
         .output()
         .unwrap();
-    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
-    assert!(v["path"].is_string());
+    let parsed: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert!(parsed["path"].is_string());
 }
 
 #[test]
@@ -73,16 +73,16 @@ fn memory_only_skips_the_sampling_sleep() {
         return;
     }
     let Some(leaf) = leaf() else { return };
-    let t = Instant::now();
+    let started = Instant::now();
     let out = Command::new(bin())
         .args(["--path", leaf.to_str().unwrap(), "--mem", "-i", "10"])
         .output()
         .unwrap();
     assert!(out.status.success());
     assert!(
-        t.elapsed().as_secs() < 5,
+        started.elapsed().as_secs() < 5,
         "a --mem run must not honour --interval, took {:?}",
-        t.elapsed()
+        started.elapsed()
     );
 }
 

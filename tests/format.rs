@@ -41,83 +41,83 @@ fn human_renders_every_metric() {
 
 #[test]
 fn unlimited_renders_as_the_word_unlimited() {
-    let mut s = stats();
-    s.memory = Some(Ok(Memory {
+    let mut stats = stats();
+    stats.memory = Some(Ok(Memory {
         high: None,
         current: 8192,
         max: None,
     }));
-    s.cpu = Some(Ok(Cpu {
+    stats.cpu = Some(Ok(Cpu {
         used_cores: 0.1,
         max_cores: None,
     }));
-    let out = human(&s);
+    let out = human(&stats);
     assert!(out.contains("8.0K / unlimited"), "{out}");
     assert!(out.contains("0.10 / unlimited cores"), "{out}");
 }
 
 #[test]
 fn unavailable_metrics_say_why() {
-    let mut s = stats();
-    s.memory = Some(Err("memory.current not present".into()));
-    let out = human(&s);
+    let mut stats = stats();
+    stats.memory = Some(Err("memory.current not present".into()));
+    let out = human(&stats);
     assert!(out.contains("n/a"), "{out}");
     assert!(out.contains("memory.current not present"), "{out}");
 }
 
 #[test]
 fn unrequested_metrics_are_absent_entirely() {
-    let mut s = stats();
-    s.pids = None;
-    s.io = None;
-    let out = human(&s);
+    let mut stats = stats();
+    stats.pids = None;
+    stats.io = None;
+    let out = human(&stats);
     assert!(!out.contains("PIDs"), "{out}");
     assert!(!out.contains("IO"), "{out}");
 }
 
 #[test]
 fn io_with_no_devices_says_so_rather_than_printing_nothing() {
-    let mut s = stats();
-    s.io = Some(Ok(Io { devices: vec![] }));
-    let out = human(&s);
+    let mut stats = stats();
+    stats.io = Some(Ok(Io { devices: vec![] }));
+    let out = human(&stats);
     assert!(out.contains("IO:"), "{out}");
     assert!(out.contains("no activity"), "{out}");
 }
 
 #[test]
 fn json_uses_raw_values_and_null_for_unlimited() {
-    let mut s = stats();
-    s.memory = Some(Ok(Memory {
+    let mut stats = stats();
+    stats.memory = Some(Ok(Memory {
         high: None,
         current: 8192,
         max: None,
     }));
-    let v: serde_json::Value = serde_json::from_str(&json(&s)).unwrap();
-    assert_eq!(v["memory"]["current"], 8192);
-    assert!(v["memory"]["max"].is_null());
-    assert_eq!(v["pids"]["current"], 42);
+    let parsed: serde_json::Value = serde_json::from_str(&json(&stats)).unwrap();
+    assert_eq!(parsed["memory"]["current"], 8192);
+    assert!(parsed["memory"]["max"].is_null());
+    assert_eq!(parsed["pids"]["current"], 42);
 }
 
 #[test]
 fn json_omits_unrequested_metrics() {
-    let mut s = stats();
-    s.io = None;
-    let v: serde_json::Value = serde_json::from_str(&json(&s)).unwrap();
+    let mut stats = stats();
+    stats.io = None;
+    let parsed: serde_json::Value = serde_json::from_str(&json(&stats)).unwrap();
     assert!(
-        v.get("io").is_none(),
-        "unrequested metrics must be absent: {v}"
+        parsed.get("io").is_none(),
+        "unrequested metrics must be absent: {parsed}"
     );
-    assert!(v.get("memory").is_some());
+    assert!(parsed.get("memory").is_some());
 }
 
 #[test]
 fn json_is_valid_when_a_metric_is_unavailable() {
-    let mut s = stats();
-    s.memory = Some(Err("memory.current not present".into()));
-    let v: serde_json::Value = serde_json::from_str(&json(&s)).unwrap();
+    let mut stats = stats();
+    stats.memory = Some(Err("memory.current not present".into()));
+    let parsed: serde_json::Value = serde_json::from_str(&json(&stats)).unwrap();
     assert!(
-        v.get("memory").is_none(),
-        "unavailable metrics are omitted: {v}"
+        parsed.get("memory").is_none(),
+        "unavailable metrics are omitted: {parsed}"
     );
 }
 
@@ -131,27 +131,27 @@ fn table_contains_the_values() {
 
 #[test]
 fn table_marks_an_unavailable_metric_and_says_why() {
-    let mut s = stats();
-    s.memory = Some(Err("memory.current not present".into()));
-    let out = table(&s);
+    let mut stats = stats();
+    stats.memory = Some(Err("memory.current not present".into()));
+    let out = table(&stats);
     assert!(out.contains("n/a"), "{out}");
     assert!(out.contains("memory.current not present"), "{out}");
 }
 
 #[test]
 fn table_omits_unrequested_metrics_entirely() {
-    let mut s = stats();
-    s.pids = None;
-    s.io = None;
-    let out = table(&s);
+    let mut stats = stats();
+    stats.pids = None;
+    stats.io = None;
+    let out = table(&stats);
     assert!(!out.contains("PIDs"), "{out}");
     assert!(!out.contains("IO"), "{out}");
 }
 
 #[test]
 fn both_renderers_hide_idle_devices_but_json_keeps_them() {
-    let mut s = stats();
-    s.io = Some(Ok(Io {
+    let mut stats = stats();
+    stats.io = Some(Ok(Io {
         devices: vec![
             IoDevice {
                 device: "loop0".into(),
@@ -165,105 +165,113 @@ fn both_renderers_hide_idle_devices_but_json_keeps_them() {
             },
         ],
     }));
-    let h = human(&s);
-    assert!(h.contains("nvme0n1"), "{h}");
+    let human_out = human(&stats);
+    assert!(human_out.contains("nvme0n1"), "{human_out}");
     assert!(
-        !h.contains("loop0"),
-        "idle device must not appear in human output: {h}"
+        !human_out.contains("loop0"),
+        "idle device must not appear in human output: {human_out}"
     );
 
-    let t = table(&s);
-    assert!(t.contains("nvme0n1"), "{t}");
+    let table_out = table(&stats);
+    assert!(table_out.contains("nvme0n1"), "{table_out}");
     assert!(
-        !t.contains("loop0"),
-        "idle device must not appear in table output: {t}"
+        !table_out.contains("loop0"),
+        "idle device must not appear in table output: {table_out}"
     );
 
     // JSON is the fidelity layer and keeps every device.
-    let v: serde_json::Value = serde_json::from_str(&json(&s)).unwrap();
-    let devs = v["io"]["devices"].as_array().unwrap();
-    assert_eq!(devs.len(), 2, "json must keep idle devices: {v}");
+    let parsed: serde_json::Value = serde_json::from_str(&json(&stats)).unwrap();
+    let devs = parsed["io"]["devices"].as_array().unwrap();
+    assert_eq!(devs.len(), 2, "json must keep idle devices: {parsed}");
 }
 
 #[test]
 fn all_devices_idle_renders_as_no_activity() {
-    let mut s = stats();
-    s.io = Some(Ok(Io {
+    let mut stats = stats();
+    stats.io = Some(Ok(Io {
         devices: vec![IoDevice {
             device: "loop0".into(),
             read_bytes_per_sec: 0.0,
             write_bytes_per_sec: 0.0,
         }],
     }));
-    assert!(human(&s).contains("no activity"), "{}", human(&s));
-    assert!(table(&s).contains("no activity"), "{}", table(&s));
+    assert!(human(&stats).contains("no activity"), "{}", human(&stats));
+    assert!(table(&stats).contains("no activity"), "{}", table(&stats));
 }
 
 #[test]
 fn memory_high_is_labelled_and_shown_beside_max() {
-    let mut s = stats();
-    s.memory = Some(Ok(Memory {
+    let mut stats = stats();
+    stats.memory = Some(Ok(Memory {
         current: 1_288_490_188,
         high: Some(2_147_483_648),
         max: Some(4_294_967_296),
     }));
     assert!(
-        human(&s).contains("RAM:  1.2G / 2.0G high / 4.0G max"),
+        human(&stats).contains("RAM:  1.2G / 2.0G high / 4.0G max"),
         "{}",
-        human(&s)
+        human(&stats)
     );
-    assert!(table(&s).contains("2.0G high / 4.0G max"), "{}", table(&s));
+    assert!(
+        table(&stats).contains("2.0G high / 4.0G max"),
+        "{}",
+        table(&stats)
+    );
 }
 
 #[test]
 fn memory_high_alone_does_not_render_as_unlimited() {
     // A systemd unit with MemoryHigh= and no MemoryMax= is throttled in
     // practice, so reporting "unlimited" here would be actively misleading.
-    let mut s = stats();
-    s.memory = Some(Ok(Memory {
+    let mut stats = stats();
+    stats.memory = Some(Ok(Memory {
         current: 1_932_735_283,
         high: Some(2_147_483_648),
         max: None,
     }));
-    let h = human(&s);
-    assert!(h.contains("RAM:  1.8G / 2.0G high"), "{h}");
+    let human_out = human(&stats);
+    assert!(human_out.contains("RAM:  1.8G / 2.0G high"), "{human_out}");
     assert!(
-        !h.contains("unlimited"),
-        "a cgroup capped by memory.high is not unlimited: {h}"
+        !human_out.contains("unlimited"),
+        "a cgroup capped by memory.high is not unlimited: {human_out}"
     );
 }
 
 #[test]
 fn output_is_unchanged_when_memory_high_is_unset() {
-    let mut s = stats();
-    s.memory = Some(Ok(Memory {
+    let mut stats = stats();
+    stats.memory = Some(Ok(Memory {
         current: 1_288_490_188,
         high: None,
         max: Some(4_294_967_296),
     }));
-    assert!(human(&s).contains("RAM:  1.2G / 4.0G"), "{}", human(&s));
+    assert!(
+        human(&stats).contains("RAM:  1.2G / 4.0G"),
+        "{}",
+        human(&stats)
+    );
 
-    s.memory = Some(Ok(Memory {
+    stats.memory = Some(Ok(Memory {
         current: 8192,
         high: None,
         max: None,
     }));
     assert!(
-        human(&s).contains("RAM:  8.0K / unlimited"),
+        human(&stats).contains("RAM:  8.0K / unlimited"),
         "{}",
-        human(&s)
+        human(&stats)
     );
 }
 
 #[test]
 fn json_reports_high_alongside_max() {
-    let mut s = stats();
-    s.memory = Some(Ok(Memory {
+    let mut stats = stats();
+    stats.memory = Some(Ok(Memory {
         current: 100,
         high: Some(2048),
         max: None,
     }));
-    let v: serde_json::Value = serde_json::from_str(&json(&s)).unwrap();
-    assert_eq!(v["memory"]["high"], 2048);
-    assert!(v["memory"]["max"].is_null());
+    let parsed: serde_json::Value = serde_json::from_str(&json(&stats)).unwrap();
+    assert_eq!(parsed["memory"]["high"], 2048);
+    assert!(parsed["memory"]["max"].is_null());
 }

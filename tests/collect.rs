@@ -24,12 +24,12 @@ fn memory_only_does_not_sleep() {
         eprintln!("skipped: host is not cgroup v2");
         return;
     }
-    let t = Instant::now();
+    let started = Instant::now();
     collect("", MEM, 5.0).unwrap();
     assert!(
-        t.elapsed().as_secs_f64() < 1.0,
+        started.elapsed().as_secs_f64() < 1.0,
         "a memory-only run must skip the sampling sleep, took {:?}",
-        t.elapsed()
+        started.elapsed()
     );
 }
 
@@ -41,11 +41,11 @@ fn root_cgroup_reports_memory_unavailable_not_zero() {
         eprintln!("skipped: host is not cgroup v2");
         return;
     }
-    let s = collect("", ALL, 0.05).unwrap();
+    let stats = collect("", ALL, 0.05).unwrap();
     assert!(
-        matches!(s.memory, Some(Err(_))),
+        matches!(stats.memory, Some(Err(_))),
         "expected memory unavailable at the root, got {:?}",
-        s.memory
+        stats.memory
     );
 }
 
@@ -55,9 +55,9 @@ fn unselected_metrics_are_none() {
         eprintln!("skipped: host is not cgroup v2");
         return;
     }
-    let s = collect("", MEM, 0.05).unwrap();
-    assert!(s.cpu.is_none() && s.pids.is_none() && s.io.is_none());
-    assert!(s.memory.is_some());
+    let stats = collect("", MEM, 0.05).unwrap();
+    assert!(stats.cpu.is_none() && stats.pids.is_none() && stats.io.is_none());
+    assert!(stats.memory.is_some());
 }
 
 #[test]
@@ -66,8 +66,11 @@ fn a_missing_cgroup_is_a_fatal_error() {
         eprintln!("skipped: host is not cgroup v2");
         return;
     }
-    let e = collect("definitely/not/a/real/cgroup", ALL, 0.05).unwrap_err();
-    assert!(e.to_string().contains("cgroup not found"), "got: {e}");
+    let error = collect("definitely/not/a/real/cgroup", ALL, 0.05).unwrap_err();
+    assert!(
+        error.to_string().contains("cgroup not found"),
+        "got: {error}"
+    );
 }
 
 #[test]

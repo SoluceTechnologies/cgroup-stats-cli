@@ -41,22 +41,22 @@ pub fn collect(path: &str, sel: Selection, interval: f64) -> Result<Stats, Box<d
     if !dir.is_dir() || !dir.join("cgroup.controllers").exists() {
         return Err(format!("cgroup not found: {}", dir.display()).into());
     }
-    let cg = Cgroup::load(hierarchies::auto(), &rel);
+    let cgroup = Cgroup::load(hierarchies::auto(), &rel);
 
     let cpu_before = sel.cpu.then(|| metrics::read_cpu_usage(&dir));
     let io_before = sel.io.then(|| metrics::read_io(&dir));
 
     let elapsed = if sel.needs_sampling() {
-        let t = Instant::now();
+        let started = Instant::now();
         std::thread::sleep(sample_window);
-        t.elapsed().as_secs_f64()
+        started.elapsed().as_secs_f64()
     } else {
         0.0
     };
 
     let cpu = match cpu_before {
         None => None,
-        Some(Err(e)) => Some(Err(e)),
+        Some(Err(err)) => Some(Err(err)),
         Some(Ok(before)) => Some(
             metrics::read_cpu_usage(&dir)
                 .and_then(|after| metrics::collect_cpu(&dir, before, after, elapsed)),
@@ -65,7 +65,7 @@ pub fn collect(path: &str, sel: Selection, interval: f64) -> Result<Stats, Box<d
 
     let io = match io_before {
         None => None,
-        Some(Err(e)) => Some(Err(e)),
+        Some(Err(err)) => Some(Err(err)),
         Some(Ok(before)) => Some(metrics::read_io(&dir).map(|after| {
             metrics::collect_io(
                 &crate::utils::cgfile::sys_dev_block(),
@@ -79,8 +79,8 @@ pub fn collect(path: &str, sel: Selection, interval: f64) -> Result<Stats, Box<d
     Ok(Stats {
         path: if rel.is_empty() { "/".into() } else { rel },
         cpu,
-        memory: sel.mem.then(|| metrics::collect_memory(&cg, &dir)),
-        pids: sel.pids.then(|| metrics::collect_pids(&cg, &dir)),
+        memory: sel.mem.then(|| metrics::collect_memory(&cgroup, &dir)),
+        pids: sel.pids.then(|| metrics::collect_pids(&cgroup, &dir)),
         io,
     })
 }

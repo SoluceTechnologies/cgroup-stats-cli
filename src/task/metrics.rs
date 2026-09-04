@@ -38,27 +38,31 @@ pub struct Io {
     pub devices: Vec<IoDevice>,
 }
 
-pub fn collect_memory(cg: &Cgroup, dir: &Path) -> Result<Memory, String> {
+pub fn collect_memory(cgroup: &Cgroup, dir: &Path) -> Result<Memory, String> {
     require(dir, &["memory.current", "memory.high", "memory.max"])?;
-    let c: &MemController = cg
+    let controller: &MemController = cgroup
         .controller_of()
         .ok_or_else(|| "memory controller unavailable".to_string())?;
-    let set = c.get_mem().map_err(|e| e.to_string())?;
+    let limits = controller.get_mem().map_err(|err| err.to_string())?;
     Ok(Memory {
-        current: c.memory_stat().usage_in_bytes,
-        high: max_value_to_option(set.high),
-        max: max_value_to_option(set.max),
+        current: controller.memory_stat().usage_in_bytes,
+        high: max_value_to_option(limits.high),
+        max: max_value_to_option(limits.max),
     })
 }
 
-pub fn collect_pids(cg: &Cgroup, dir: &Path) -> Result<Pids, String> {
+pub fn collect_pids(cgroup: &Cgroup, dir: &Path) -> Result<Pids, String> {
     require(dir, &["pids.current", "pids.max"])?;
-    let c: &PidController = cg
+    let controller: &PidController = cgroup
         .controller_of()
         .ok_or_else(|| "pids controller unavailable".to_string())?;
     Ok(Pids {
-        current: c.get_pid_current().map_err(|e| e.to_string())?,
-        max: max_value_to_option(Some(c.get_pid_max().map_err(|e| e.to_string())?)),
+        current: controller
+            .get_pid_current()
+            .map_err(|err| err.to_string())?,
+        max: max_value_to_option(Some(
+            controller.get_pid_max().map_err(|err| err.to_string())?,
+        )),
     })
 }
 
@@ -71,8 +75,8 @@ pub fn collect_cpu(dir: &Path, before: u64, after: u64, elapsed: f64) -> Result<
     require(dir, &["cpu.stat"])?;
 
     let max_cores = match std::fs::read_to_string(dir.join("cpu.max")) {
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-        Err(e) => return Err(format!("cpu.max: {e}")),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => None,
+        Err(err) => return Err(format!("cpu.max: {err}")),
         Ok(text) => match parse_cpu_max(&text) {
             Some((quota, period)) => Some(quota as f64 / period as f64),
 
@@ -94,13 +98,16 @@ pub fn read_io(dir: &Path) -> Result<Vec<RawIo>, String> {
 pub fn collect_io(sys_dev_block: &Path, before: &[RawIo], after: &[RawIo], elapsed: f64) -> Io {
     let devices = after
         .iter()
-        .map(|a| {
-            let b = before.iter().find(|b| b.device == a.device);
-            let (br, bw) = b.map_or((0, 0), |b| (b.rbytes, b.wbytes));
+        .map(|current| {
+            let previous = before
+                .iter()
+                .find(|candidate| candidate.device == current.device);
+            let (previous_read, previous_write) =
+                previous.map_or((0, 0), |device| (device.rbytes, device.wbytes));
             IoDevice {
-                device: device_name(sys_dev_block, &a.device),
-                read_bytes_per_sec: rate(br, a.rbytes, elapsed),
-                write_bytes_per_sec: rate(bw, a.wbytes, elapsed),
+                device: device_name(sys_dev_block, &current.device),
+                read_bytes_per_sec: rate(previous_read, current.rbytes, elapsed),
+                write_bytes_per_sec: rate(previous_write, current.wbytes, elapsed),
             }
         })
         .collect();

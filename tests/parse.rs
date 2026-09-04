@@ -55,36 +55,36 @@ fn cpu_max_with_a_zero_period_is_none() {
 
 #[test]
 fn io_stat_parses_multiple_devices() {
-    let s = "\
+    let text = "\
 7:55 rbytes=14336 wbytes=0 rios=11 wios=0 dbytes=0 dios=0
 259:0 rbytes=966656 wbytes=512 rios=17 wios=3 dbytes=0 dios=0
 ";
-    let v = parse_io_stat(s);
-    assert_eq!(v.len(), 2);
-    assert_eq!(v[0].device, "7:55");
-    assert_eq!(v[0].rbytes, 14336);
-    assert_eq!(v[1].device, "259:0");
-    assert_eq!(v[1].wbytes, 512);
+    let devices = parse_io_stat(text);
+    assert_eq!(devices.len(), 2);
+    assert_eq!(devices[0].device, "7:55");
+    assert_eq!(devices[0].rbytes, 14336);
+    assert_eq!(devices[1].device, "259:0");
+    assert_eq!(devices[1].wbytes, 512);
 }
 
 #[test]
 fn io_stat_keeps_lines_carrying_extra_iocost_keys() {
     // The case cgroups-rs drops: its parser filters to exactly 7 fields,
     // so an iocost-enabled kernel yields an empty device list there.
-    let s = "8:0 rbytes=180224 wbytes=0 rios=3 wios=0 dbytes=0 dios=0 \
+    let text = "8:0 rbytes=180224 wbytes=0 rios=3 wios=0 dbytes=0 dios=0 \
 cost.usage=123 cost.wait=0 cost.indebt=0 cost.indelay=0\n";
-    let v = parse_io_stat(s);
-    assert_eq!(v.len(), 1);
-    assert_eq!(v[0].rbytes, 180224);
+    let devices = parse_io_stat(text);
+    assert_eq!(devices.len(), 1);
+    assert_eq!(devices[0].rbytes, 180224);
 }
 
 #[test]
 fn io_stat_handles_a_large_minor() {
     // cgroups-rs parses the minor as i16 and panics above 32767.
-    let s = "253:1048575 rbytes=1 wbytes=2 rios=0 wios=0 dbytes=0 dios=0\n";
-    let v = parse_io_stat(s);
-    assert_eq!(v.len(), 1);
-    assert_eq!(v[0].device, "253:1048575");
+    let text = "253:1048575 rbytes=1 wbytes=2 rios=0 wios=0 dbytes=0 dios=0\n";
+    let devices = parse_io_stat(text);
+    assert_eq!(devices.len(), 1);
+    assert_eq!(devices[0].device, "253:1048575");
 }
 
 #[test]
@@ -95,10 +95,10 @@ fn io_stat_empty_is_an_empty_list_not_an_error() {
 
 #[test]
 fn io_stat_skips_junk_lines_without_panicking() {
-    let s = "garbage\n8:0 rbytes=5 wbytes=6\nalso junk\n";
-    let v = parse_io_stat(s);
-    assert_eq!(v.len(), 1);
-    assert_eq!(v[0].rbytes, 5);
+    let text = "garbage\n8:0 rbytes=5 wbytes=6\nalso junk\n";
+    let devices = parse_io_stat(text);
+    assert_eq!(devices.len(), 1);
+    assert_eq!(devices[0].rbytes, 5);
 }
 
 #[test]

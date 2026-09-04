@@ -4,9 +4,9 @@ use cgroups_rs::fs::MaxValue;
 /// format used by `cpu.stat`, `memory.stat` and friends.
 pub fn parse_flat_key(text: &str, key: &str) -> Option<u64> {
     text.lines().find_map(|line| {
-        let mut it = line.split_whitespace();
-        match (it.next(), it.next()) {
-            (Some(k), Some(v)) if k == key => v.parse().ok(),
+        let mut fields = line.split_whitespace();
+        match (fields.next(), fields.next()) {
+            (Some(found), Some(value)) if found == key => value.parse().ok(),
             _ => None,
         }
     })
@@ -16,9 +16,9 @@ pub fn parse_flat_key(text: &str, key: &str) -> Option<u64> {
 /// literal `max`. Returns `None` for unlimited, for unparseable content, and
 /// for a zero period, which would otherwise hand the caller a divide-by-zero.
 pub fn parse_cpu_max(text: &str) -> Option<(u64, u64)> {
-    let mut it = text.split_whitespace();
-    let quota = it.next()?;
-    let period = it.next()?.parse().ok()?;
+    let mut fields = text.split_whitespace();
+    let quota = fields.next()?;
+    let period = fields.next()?.parse().ok()?;
     if period == 0 {
         return None;
     }
@@ -41,17 +41,17 @@ pub struct RawIo {
 pub fn parse_io_stat(text: &str) -> Vec<RawIo> {
     text.lines()
         .filter_map(|line| {
-            let mut it = line.split_whitespace();
-            let device = it.next()?;
+            let mut fields = line.split_whitespace();
+            let device = fields.next()?;
             if !device.contains(':') {
                 return None;
             }
             let mut rbytes = None;
             let mut wbytes = None;
-            for field in it {
+            for field in fields {
                 match field.split_once('=') {
-                    Some(("rbytes", v)) => rbytes = v.parse().ok(),
-                    Some(("wbytes", v)) => wbytes = v.parse().ok(),
+                    Some(("rbytes", value)) => rbytes = value.parse().ok(),
+                    Some(("wbytes", value)) => wbytes = value.parse().ok(),
                     _ => {}
                 }
             }
@@ -74,10 +74,10 @@ pub fn rate(before: u64, after: u64, elapsed_secs: f64) -> f64 {
     after.saturating_sub(before) as f64 / elapsed_secs
 }
 
-pub fn max_value_to_option(v: Option<MaxValue>) -> Option<u64> {
-    match v {
+pub fn max_value_to_option(value: Option<MaxValue>) -> Option<u64> {
+    match value {
         None | Some(MaxValue::Max) => None,
-        Some(MaxValue::Value(n)) if n < 0 => None,
-        Some(MaxValue::Value(n)) => Some(n as u64),
+        Some(MaxValue::Value(bytes)) if bytes < 0 => None,
+        Some(MaxValue::Value(bytes)) => Some(bytes as u64),
     }
 }

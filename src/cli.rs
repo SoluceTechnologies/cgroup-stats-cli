@@ -50,13 +50,15 @@ pub struct Args {
     pub format: Format,
 }
 
-fn positive_secs(s: &str) -> Result<f64, String> {
-    let v: f64 = s.parse().map_err(|_| format!("`{s}` is not a number"))?;
-    if v > 0.0 && Duration::try_from_secs_f64(v).is_ok() {
-        Ok(v)
+fn positive_secs(raw: &str) -> Result<f64, String> {
+    let seconds: f64 = raw
+        .parse()
+        .map_err(|_| format!("`{raw}` is not a number"))?;
+    if seconds > 0.0 && Duration::try_from_secs_f64(seconds).is_ok() {
+        Ok(seconds)
     } else {
         Err(format!(
-            "interval must be a positive, representable number of seconds, got `{s}`"
+            "interval must be a positive, representable number of seconds, got `{raw}`"
         ))
     }
 }

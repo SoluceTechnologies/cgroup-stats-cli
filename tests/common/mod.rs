@@ -15,10 +15,10 @@ core_sched.force_idle_usec 0
 ";
 
 pub fn tmpdir(name: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("cgstats-test-{name}"));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).unwrap();
-    d
+    let dir = std::env::temp_dir().join(format!("cgstats-test-{name}"));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
 }
 
 pub fn v2() -> bool {

@@ -5,146 +5,172 @@ use comfy_table::{Table, presets::UTF8_FULL};
 use serde_json::{Map, Value, json};
 use std::fmt::Write;
 
-fn memory_limits(m: &Memory) -> String {
-    match (m.high, m.max) {
+/// `memory.high` throttles where `memory.max` OOM-kills, so a cgroup with only
+/// `high` set is capped in practice and must not render as "unlimited". Both
+/// are labelled whenever `high` is set; output is unchanged when it is not.
+fn memory_limits(memory: &Memory) -> String {
+    match (memory.high, memory.max) {
         (None, max) => limit(max),
-        (Some(h), None) => format!("{} high", iec(h)),
-        (Some(h), Some(max)) => format!("{} high / {} max", iec(h), iec(max)),
+        (Some(high), None) => format!("{} high", iec(high)),
+        (Some(high), Some(max)) => format!("{} high / {} max", iec(high), iec(max)),
     }
 }
 
-pub fn json(s: &Stats) -> String {
-    let mut m = Map::new();
-    m.insert("path".into(), json!(s.path));
-    if let Some(Ok(v)) = &s.cpu {
-        m.insert("cpu".into(), serde_json::to_value(v).unwrap());
+/// Only readings appear. A metric that was not requested, or was requested but
+/// unavailable, is omitted — a consumer checking for a key is a cleaner
+/// contract than a sentinel value.
+pub fn json(stats: &Stats) -> String {
+    let mut object = Map::new();
+    object.insert("path".into(), json!(stats.path));
+    if let Some(Ok(cpu)) = &stats.cpu {
+        object.insert("cpu".into(), serde_json::to_value(cpu).unwrap());
     }
-    if let Some(Ok(v)) = &s.memory {
-        m.insert("memory".into(), serde_json::to_value(v).unwrap());
+    if let Some(Ok(memory)) = &stats.memory {
+        object.insert("memory".into(), serde_json::to_value(memory).unwrap());
     }
-    if let Some(Ok(v)) = &s.pids {
-        m.insert("pids".into(), serde_json::to_value(v).unwrap());
+    if let Some(Ok(pids)) = &stats.pids {
+        object.insert("pids".into(), serde_json::to_value(pids).unwrap());
     }
-    if let Some(Ok(v)) = &s.io {
-        m.insert("io".into(), serde_json::to_value(v).unwrap());
+    if let Some(Ok(io)) = &stats.io {
+        object.insert("io".into(), serde_json::to_value(io).unwrap());
     }
-    serde_json::to_string_pretty(&Value::Object(m)).unwrap()
+    serde_json::to_string_pretty(&Value::Object(object)).unwrap()
 }
 
-pub fn table(s: &Stats) -> String {
-    let mut t = Table::new();
-    t.load_preset(UTF8_FULL)
+pub fn table(stats: &Stats) -> String {
+    let mut grid = Table::new();
+    grid.load_preset(UTF8_FULL)
         .set_header(vec!["Metric", "Current", "Limit"]);
 
-    if let Some(m) = &s.memory {
-        match m {
-            Ok(m) => t.add_row(vec!["RAM".into(), iec(m.current), memory_limits(m)]),
-            Err(e) => t.add_row(vec!["RAM".into(), "n/a".into(), e.clone()]),
+    if let Some(memory) = &stats.memory {
+        match memory {
+            Ok(reading) => grid.add_row(vec![
+                "RAM".into(),
+                iec(reading.current),
+                memory_limits(reading),
+            ]),
+            Err(reason) => grid.add_row(vec!["RAM".into(), "n/a".into(), reason.clone()]),
         };
     }
-    if let Some(c) = &s.cpu {
-        match c {
-            Ok(c) => t.add_row(vec![
+    if let Some(cpu) = &stats.cpu {
+        match cpu {
+            Ok(reading) => grid.add_row(vec![
                 "CPU (cores)".into(),
-                format!("{:.2}", c.used_cores),
-                c.max_cores
-                    .map_or("unlimited".into(), |v| format!("{v:.2}")),
+                format!("{:.2}", reading.used_cores),
+                reading
+                    .max_cores
+                    .map_or("unlimited".into(), |cores| format!("{cores:.2}")),
             ]),
-            Err(e) => t.add_row(vec!["CPU (cores)".into(), "n/a".into(), e.clone()]),
+            Err(reason) => grid.add_row(vec!["CPU (cores)".into(), "n/a".into(), reason.clone()]),
         };
     }
-    if let Some(p) = &s.pids {
-        match p {
-            Ok(p) => t.add_row(vec![
+    if let Some(pids) = &stats.pids {
+        match pids {
+            Ok(reading) => grid.add_row(vec![
                 "PIDs".into(),
-                p.current.to_string(),
-                p.max.map_or("unlimited".into(), |v| v.to_string()),
+                reading.current.to_string(),
+                reading
+                    .max
+                    .map_or("unlimited".into(), |count| count.to_string()),
             ]),
-            Err(e) => t.add_row(vec!["PIDs".into(), "n/a".into(), e.clone()]),
+            Err(reason) => grid.add_row(vec!["PIDs".into(), "n/a".into(), reason.clone()]),
         };
     }
-    if let Some(i) = &s.io {
-        match i {
-            Ok(i) => {
-                let active = active_devices(i);
+    if let Some(io) = &stats.io {
+        match io {
+            Ok(reading) => {
+                let active = active_devices(reading);
                 if active.is_empty() {
-                    t.add_row(vec!["IO", "no activity", ""]);
+                    grid.add_row(vec!["IO", "no activity", ""]);
                 } else {
-                    for d in active {
-                        t.add_row(vec![
-                            format!("IO {}", d.device),
-                            format!("r {}/s", iec(d.read_bytes_per_sec as u64)),
-                            format!("w {}/s", iec(d.write_bytes_per_sec as u64)),
+                    for device in active {
+                        grid.add_row(vec![
+                            format!("IO {}", device.device),
+                            format!("r {}/s", iec(device.read_bytes_per_sec as u64)),
+                            format!("w {}/s", iec(device.write_bytes_per_sec as u64)),
                         ]);
                     }
                 }
             }
-            Err(e) => {
-                t.add_row(vec!["IO".into(), "n/a".into(), e.clone()]);
+            Err(reason) => {
+                grid.add_row(vec!["IO".into(), "n/a".into(), reason.clone()]);
             }
         };
     }
-    t.to_string()
+    grid.to_string()
 }
 
+/// A leaf cgroup's `io.stat` lists only devices that cgroup has touched, but
+/// the root's enumerates every block device on the host — dozens of unbroken
+/// zero rows with any real traffic buried among them. The human-facing
+/// renderers exist to be glanceable and a rate view's job is showing what
+/// moves, so they filter. `json` keeps every device.
 fn active_devices(io: &Io) -> Vec<&IoDevice> {
     io.devices
         .iter()
-        .filter(|d| d.read_bytes_per_sec > 0.0 || d.write_bytes_per_sec > 0.0)
+        .filter(|device| device.read_bytes_per_sec > 0.0 || device.write_bytes_per_sec > 0.0)
         .collect()
 }
 
-pub fn human(s: &Stats) -> String {
-    let mut o = String::new();
+pub fn human(stats: &Stats) -> String {
+    let mut out = String::new();
 
-    if let Some(m) = &s.memory {
-        match m {
-            Ok(m) => writeln!(o, "RAM:  {} / {}", iec(m.current), memory_limits(m)).unwrap(),
-            Err(e) => writeln!(o, "RAM:  n/a ({e})").unwrap(),
+    if let Some(memory) = &stats.memory {
+        match memory {
+            Ok(reading) => writeln!(
+                out,
+                "RAM:  {} / {}",
+                iec(reading.current),
+                memory_limits(reading)
+            )
+            .unwrap(),
+            Err(reason) => writeln!(out, "RAM:  n/a ({reason})").unwrap(),
         }
     }
-    if let Some(c) = &s.cpu {
-        match c {
-            Ok(c) => {
-                let max = c
+    if let Some(cpu) = &stats.cpu {
+        match cpu {
+            Ok(reading) => {
+                let max = reading
                     .max_cores
-                    .map_or("unlimited".to_string(), |v| format!("{v:.2}"));
-                writeln!(o, "CPU:  {:.2} / {} cores", c.used_cores, max).unwrap()
+                    .map_or("unlimited".to_string(), |cores| format!("{cores:.2}"));
+                writeln!(out, "CPU:  {:.2} / {} cores", reading.used_cores, max).unwrap()
             }
-            Err(e) => writeln!(o, "CPU:  n/a ({e})").unwrap(),
+            Err(reason) => writeln!(out, "CPU:  n/a ({reason})").unwrap(),
         }
     }
-    if let Some(p) = &s.pids {
-        match p {
-            Ok(p) => {
-                let max = p.max.map_or("unlimited".to_string(), |v| v.to_string());
-                writeln!(o, "PIDs: {} / {}", p.current, max).unwrap()
+    if let Some(pids) = &stats.pids {
+        match pids {
+            Ok(reading) => {
+                let max = reading
+                    .max
+                    .map_or("unlimited".to_string(), |count| count.to_string());
+                writeln!(out, "PIDs: {} / {}", reading.current, max).unwrap()
             }
-            Err(e) => writeln!(o, "PIDs: n/a ({e})").unwrap(),
+            Err(reason) => writeln!(out, "PIDs: n/a ({reason})").unwrap(),
         }
     }
-    if let Some(i) = &s.io {
-        match i {
-            Ok(i) => {
-                let active = active_devices(i);
+    if let Some(io) = &stats.io {
+        match io {
+            Ok(reading) => {
+                let active = active_devices(reading);
                 if active.is_empty() {
-                    writeln!(o, "IO:   no activity").unwrap()
+                    writeln!(out, "IO:   no activity").unwrap()
                 } else {
-                    for (n, d) in active.iter().enumerate() {
-                        let label = if n == 0 { "IO:  " } else { "     " };
+                    for (position, device) in active.iter().enumerate() {
+                        let label = if position == 0 { "IO:  " } else { "     " };
                         writeln!(
-                            o,
+                            out,
                             "{label} {}  r {}/s  w {}/s",
-                            d.device,
-                            iec(d.read_bytes_per_sec as u64),
-                            iec(d.write_bytes_per_sec as u64)
+                            device.device,
+                            iec(device.read_bytes_per_sec as u64),
+                            iec(device.write_bytes_per_sec as u64)
                         )
                         .unwrap()
                     }
                 }
             }
-            Err(e) => writeln!(o, "IO:   n/a ({e})").unwrap(),
+            Err(reason) => writeln!(out, "IO:   n/a ({reason})").unwrap(),
         }
     }
-    o
+    out
 }

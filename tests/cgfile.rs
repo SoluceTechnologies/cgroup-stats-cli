@@ -9,17 +9,17 @@ use std::path::Path;
 
 #[test]
 fn require_passes_when_every_file_is_present() {
-    let d = tmpdir("require-ok");
-    fs::write(d.join("a"), "1").unwrap();
-    fs::write(d.join("b"), "2").unwrap();
-    assert!(require(&d, &["a", "b"]).is_ok());
+    let dir = tmpdir("require-ok");
+    fs::write(dir.join("a"), "1").unwrap();
+    fs::write(dir.join("b"), "2").unwrap();
+    assert!(require(&dir, &["a", "b"]).is_ok());
 }
 
 #[test]
 fn require_names_the_missing_file() {
-    let d = tmpdir("require-missing");
-    fs::write(d.join("a"), "1").unwrap();
-    let err = require(&d, &["a", "b"]).unwrap_err();
+    let dir = tmpdir("require-missing");
+    fs::write(dir.join("a"), "1").unwrap();
+    let err = require(&dir, &["a", "b"]).unwrap_err();
     assert!(
         err.contains("b"),
         "error should name the missing file, got: {err}"
@@ -36,8 +36,8 @@ fn max_value_max_and_negative_are_unlimited() {
 
 #[test]
 fn device_name_falls_back_to_major_minor_when_unresolvable() {
-    let d = tmpdir("devname");
-    assert_eq!(device_name(&d, "8:0"), "8:0");
+    let dir = tmpdir("devname");
+    assert_eq!(device_name(&dir, "8:0"), "8:0");
 }
 
 #[test]
