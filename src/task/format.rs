@@ -5,9 +5,6 @@ use comfy_table::{Table, presets::UTF8_FULL};
 use serde_json::{Map, Value, json};
 use std::fmt::Write;
 
-/// `memory.high` throttles where `memory.max` OOM-kills, so a cgroup with only
-/// `high` set is capped in practice and must not render as "unlimited". Both
-/// are labelled whenever `high` is set; output is unchanged when it is not.
 fn memory_limits(m: &Memory) -> String {
     match (m.high, m.max) {
         (None, max) => limit(max),
@@ -16,9 +13,6 @@ fn memory_limits(m: &Memory) -> String {
     }
 }
 
-/// Only readings appear. A metric that was not requested, or was requested but
-/// unavailable, is omitted — a consumer checking for a key is a cleaner
-/// contract than a sentinel value.
 pub fn json(s: &Stats) -> String {
     let mut m = Map::new();
     m.insert("path".into(), json!(s.path));

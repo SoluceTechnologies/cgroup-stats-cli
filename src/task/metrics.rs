@@ -16,9 +16,6 @@ pub struct Cpu {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct Memory {
     pub current: u64,
-    /// `memory.high`: the kernel reclaims aggressively and stalls the cgroup
-    /// above this, but does not OOM-kill. Distinct from `max`, and commonly the
-    /// only limit systemd sets.
     pub high: Option<u64>,
     pub max: Option<u64>,
 }
@@ -42,8 +39,6 @@ pub struct Io {
 }
 
 pub fn collect_memory(cg: &Cgroup, dir: &Path) -> Result<Memory, String> {
-    // memory.high is required alongside the others so get_mem()'s habit of
-    // mapping a failed read onto MaxValue::Max cannot masquerade as "no limit".
     require(dir, &["memory.current", "memory.high", "memory.max"])?;
     let c: &MemController = cg
         .controller_of()
@@ -67,8 +62,6 @@ pub fn collect_pids(cg: &Cgroup, dir: &Path) -> Result<Pids, String> {
     })
 }
 
-/// One `usage_usec` sample. Read directly rather than through
-/// `CpuController::cpu()`, which returns an empty string on a failed read.
 pub fn read_cpu_usage(dir: &Path) -> Result<u64, String> {
     let text = read(dir, "cpu.stat")?;
     parse_flat_key(&text, "usage_usec").ok_or_else(|| "cpu.stat has no usage_usec".to_string())
