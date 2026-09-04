@@ -57,6 +57,11 @@ aggressively and stalls a cgroup above
 Requires cgroup v2 (unified hierarchy). Metrics whose files are absent (the root cgroup has no `memory.current`, for
 instance) report `n/a` rather than a misleading zero.
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the required checks, the project's
+conventions, and how releases are cut.
+
 ## Licence
 
 Apache-2.0

@@ -94,7 +94,6 @@ pub fn table(stats: &Stats) -> String {
     grid.to_string()
 }
 
-
 fn active_devices(io: &Io) -> Vec<&IoDevice> {
     io.devices
         .iter()
