@@ -36,27 +36,36 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      - name: Resolve binary name
+        run: |
+          BIN_NAME=$(cargo metadata --no-deps --format-version 1 \
+            | jq -r 'first(.packages[0].targets[] | select(.kind[] == "bin") | .name)')
+          test -n "$BIN_NAME" || { echo "no [[bin]] target in Cargo.toml"; exit 1; }
+          echo "BIN_NAME=$BIN_NAME" >> "$GITHUB_ENV"
+          echo "Resolved binary name: $BIN_NAME"
+
       - name: Build
         run: cargo build --release --locked --target ${{ matrix.target }}
 
       - name: Package tarball
         run: |
-          BIN=target/${{ matrix.target }}/release/cgroup-stats-cli
+          BIN="target/${{ matrix.target }}/release/$BIN_NAME"
           strip "$BIN" || true
-          NAME=cgroup-stats-cli-${{ inputs.version }}-${{ matrix.target }}
+          NAME="$BIN_NAME-${{ inputs.version }}-${{ matrix.target }}"
           mkdir -p "dist/$NAME"
-          cp "$BIN" "dist/$NAME/cgroup-stats-cli"
+          cp "$BIN" "dist/$NAME/$BIN_NAME"
           cp README.md LICENSE "dist/$NAME/"
           tar -C dist -czf "dist/$NAME.tar.gz" "$NAME"
           shasum -a 256 "dist/$NAME.tar.gz" | awk '{print $1}' > "dist/$NAME.tar.gz.sha256"
+          echo "TARBALL=dist/$NAME.tar.gz" >> "$GITHUB_ENV"
 
       - name: Upload to release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release upload "${{ inputs.ref }}" \
-            dist/cgroup-stats-cli-${{ inputs.version }}-${{ matrix.target }}.tar.gz \
-            dist/cgroup-stats-cli-${{ inputs.version }}-${{ matrix.target }}.tar.gz.sha256 \
+            "$TARBALL" \
+            "$TARBALL.sha256" \
             --clobber
 
   linux:
@@ -81,6 +90,14 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      - name: Resolve binary name
+        run: |
+          BIN_NAME=$(cargo metadata --no-deps --format-version 1 \
+            | jq -r 'first(.packages[0].targets[] | select(.kind[] == "bin") | .name)')
+          test -n "$BIN_NAME" || { echo "no [[bin]] target in Cargo.toml"; exit 1; }
+          echo "BIN_NAME=$BIN_NAME" >> "$GITHUB_ENV"
+          echo "Resolved binary name: $BIN_NAME"
+
       - name: Install zig + cargo tools
         run: |
           pip install ziglang
@@ -92,13 +109,14 @@ jobs:
 
       - name: Package tarball
         run: |
-          BIN=target/${{ matrix.target }}/release/cgroup-stats-cli
-          NAME=cgroup-stats-cli-${{ inputs.version }}-${{ matrix.target }}
+          BIN="target/${{ matrix.target }}/release/$BIN_NAME"
+          NAME="$BIN_NAME-${{ inputs.version }}-${{ matrix.target }}"
           mkdir -p "dist/$NAME"
-          cp "$BIN" "dist/$NAME/cgroup-stats-cli"
+          cp "$BIN" "dist/$NAME/$BIN_NAME"
           cp README.md LICENSE "dist/$NAME/"
           tar -C dist -czf "dist/$NAME.tar.gz" "$NAME"
           sha256sum "dist/$NAME.tar.gz" | awk '{print $1}' > "dist/$NAME.tar.gz.sha256"
+          echo "TARBALL=dist/$NAME.tar.gz" >> "$GITHUB_ENV"
 
       - name: Build .deb
         run: |
@@ -108,7 +126,7 @@ jobs:
       - name: Smoke test binary
         run: |
           if [ "${{ matrix.deb_arch }}" = "amd64" ]; then
-            ./target/${{ matrix.target }}/release/cgroup-stats-cli --version
+            "./target/${{ matrix.target }}/release/$BIN_NAME" --version
           fi
 
       - name: Upload to release
@@ -116,7 +134,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release upload "${{ inputs.ref }}" \
-            dist/cgroup-stats-cli-${{ inputs.version }}-${{ matrix.target }}.tar.gz \
-            dist/cgroup-stats-cli-${{ inputs.version }}-${{ matrix.target }}.tar.gz.sha256 \
+            "$TARBALL" \
+            "$TARBALL.sha256" \
             dist/*_${{ matrix.deb_arch }}.deb \
             --clobber

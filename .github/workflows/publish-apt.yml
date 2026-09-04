@@ -29,6 +29,12 @@ jobs:
           ref: ${{ inputs.version }}
           path: source
 
+      - name: Resolve project name
+        run: |
+          PROJECT_NAME="${GITHUB_REPOSITORY##*/}"
+          echo "PROJECT_NAME=$PROJECT_NAME" >> "$GITHUB_ENV"
+          echo "Resolved project name: $PROJECT_NAME"
+
       - name: Install tooling
         run: sudo apt-get update -qq && sudo apt-get install -y -qq apt-utils gnupg
 
@@ -70,8 +76,8 @@ jobs:
           done
 
           apt-ftparchive \
-            -o APT::FTPArchive::Release::Origin="cgroup-stats-cli" \
-            -o APT::FTPArchive::Release::Label="cgroup-stats-cli" \
+            -o APT::FTPArchive::Release::Origin="$PROJECT_NAME" \
+            -o APT::FTPArchive::Release::Label="$PROJECT_NAME" \
             -o APT::FTPArchive::Release::Suite="stable" \
             -o APT::FTPArchive::Release::Codename="stable" \
             -o APT::FTPArchive::Release::Components="main" \
@@ -91,7 +97,7 @@ jobs:
       - name: Publish keyring + disable Jekyll
         run: |
           cd pages
-          cp ../source/cgroup-stats-cli-archive-keyring.gpg ./cgroup-stats-cli-archive-keyring.gpg
+          cp "../source/$PROJECT_NAME-archive-keyring.gpg" "./$PROJECT_NAME-archive-keyring.gpg"
           touch .nojekyll
 
       - name: Commit + push gh-pages
@@ -100,5 +106,5 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
           git add -A
-          git commit -m "apt: publish cgroup-stats-cli ${{ inputs.version }}" || echo "nothing to commit"
+          git commit -m "apt: publish $PROJECT_NAME ${{ inputs.version }}" || echo "nothing to commit"
           git push origin gh-pages
