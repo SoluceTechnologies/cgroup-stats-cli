@@ -38,9 +38,6 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
-      # crates.io publishes package.name, which is not necessarily the [[bin]]
-      # name — here the package is cgroup_stats_cli while the binary is
-      # cgroup-stats-cli — so the summary link must use the package name.
       - name: Resolve crate name and verify version matches ${{ inputs.version }}
         run: |
           read -r CRATE_NAME MANIFEST_VERSION <<EOF
