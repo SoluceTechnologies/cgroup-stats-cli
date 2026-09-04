@@ -9,10 +9,12 @@ Replaces the `watch` + `awk` idiom for reading `cpu.stat` deltas by hand.
 - **Debian/Ubuntu (apt):** see [DISTRIBUTION.md](DISTRIBUTION.md)
 - **cargo:** `cargo install cgroup-stats-cli`
 
+The installed binary is `cgroup-stats`.
+
 ## Usage
 
 ```
-cgroup-stats-cli [OPTIONS] --path <PATH>
+cgroup-stats [OPTIONS] --path <PATH>
 
   -p, --path <PATH>       cgroup path, absolute or relative to the hierarchy root
   -c, --cpu               show CPU statistics
@@ -26,7 +28,7 @@ cgroup-stats-cli [OPTIONS] --path <PATH>
 With no metric flag, all four are shown.
 
 ```console
-$ cgroup-stats-cli --path /sys/fs/cgroup/system.slice/nginx.service
+$ cgroup-stats --path /sys/fs/cgroup/system.slice/nginx.service
 RAM:  1.2G / 4.0G
 CPU:  0.53 / 2.00 cores
 PIDs: 42 / 512
@@ -36,7 +38,7 @@ IO:   sda  r 1.2M/s  w 340.0K/s
 Refreshing display:
 
 ```bash
-watch -n 2 cgroup-stats-cli --path /sys/fs/cgroup/system.slice/nginx.service
+watch -n 2 cgroup-stats --path /sys/fs/cgroup/system.slice/nginx.service
 ```
 
 ## Notes

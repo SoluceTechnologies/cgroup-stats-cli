@@ -12,7 +12,7 @@ repository = "https://github.com/SoluceTechnologies/cgroup-stats-cli.git"
 homepage = "https://github.com/SoluceTechnologies/cgroup-stats-cli"
 
 [[bin]]
-name = "cgroup-stats-cli"
+name = "cgroup-stats"
 path = "src/main.rs"
 
 [lib]

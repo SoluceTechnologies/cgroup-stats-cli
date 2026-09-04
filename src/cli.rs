@@ -10,7 +10,7 @@ pub enum Format {
 
 #[derive(Parser, Debug)]
 #[command(
-    name = env!("CARGO_PKG_NAME"),
+    name = "cgroup-stats",
     version = env!("CARGO_PKG_VERSION"),
     about = env!("CARGO_PKG_DESCRIPTION"),
 )]
