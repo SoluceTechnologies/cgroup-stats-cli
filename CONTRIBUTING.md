@@ -37,6 +37,17 @@ something that scrolls past in the log.
 cargo fmt --all
 ```
 
+There is a git hook that runs this for you. Enable it once per clone:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+It formats the tree and re-stages the Rust files it changed. A file that has
+*unstaged* edits as well as staged ones is formatted but deliberately left
+unstaged, so your uncommitted work is never swept into a commit — the hook
+prints which files that applied to.
+
 **Tests:**
 
 ```bash
