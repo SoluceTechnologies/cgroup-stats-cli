@@ -1,0 +1,24 @@
+#!/bin/sh
+
+set -eu
+
+staged_rust=$(git diff --cached --name-only --diff-filter=ACM -- '*.rs')
+[ -n "$staged_rust" ] || exit 0
+
+command -v cargo >/dev/null 2>&1 || {
+    echo "pre-commit: cargo not found, skipping rustfmt" >&2
+    exit 0
+}
+
+already_dirty=$(git diff --name-only -- '*.rs')
+
+cargo fmt --all
+
+echo "$staged_rust" | while IFS= read -r file; do
+    [ -n "$file" ] || continue
+    if printf '%s\n' "$already_dirty" | grep -qxF -- "$file"; then
+        echo "pre-commit: formatted $file but left it unstaged (it has unstaged changes)"
+    else
+        git add -- "$file"
+    fi
+done

@@ -1,0 +1,90 @@
+mod common;
+
+use cgroup_stats_cli::cli::Selection;
+use cgroup_stats_cli::task::collect;
+use common::v2;
+use std::time::Instant;
+
+const ALL: Selection = Selection {
+    cpu: true,
+    mem: true,
+    pids: true,
+    io: true,
+};
+const MEM: Selection = Selection {
+    cpu: false,
+    mem: true,
+    pids: false,
+    io: false,
+};
+
+#[test]
+fn memory_only_does_not_sleep() {
+    if !v2() {
+        eprintln!("skipped: host is not cgroup v2");
+        return;
+    }
+    let started = Instant::now();
+    collect("", MEM, 5.0).unwrap();
+    assert!(
+        started.elapsed().as_secs_f64() < 1.0,
+        "a memory-only run must skip the sampling sleep, took {:?}",
+        started.elapsed()
+    );
+}
+
+#[test]
+fn root_cgroup_reports_memory_unavailable_not_zero() {
+    if !v2() {
+        eprintln!("skipped: host is not cgroup v2");
+        return;
+    }
+    let stats = collect("", ALL, 0.05).unwrap();
+    assert!(
+        matches!(stats.memory, Some(Err(_))),
+        "expected memory unavailable at the root, got {:?}",
+        stats.memory
+    );
+}
+
+#[test]
+fn unselected_metrics_are_none() {
+    if !v2() {
+        eprintln!("skipped: host is not cgroup v2");
+        return;
+    }
+    let stats = collect("", MEM, 0.05).unwrap();
+    assert!(stats.cpu.is_none() && stats.pids.is_none() && stats.io.is_none());
+    assert!(stats.memory.is_some());
+}
+
+#[test]
+fn a_missing_cgroup_is_a_fatal_error() {
+    if !v2() {
+        eprintln!("skipped: host is not cgroup v2");
+        return;
+    }
+    let error = collect("definitely/not/a/real/cgroup", ALL, 0.05).unwrap_err();
+    assert!(
+        error.to_string().contains("cgroup not found"),
+        "got: {error}"
+    );
+}
+
+#[test]
+fn a_non_finite_or_non_positive_interval_is_an_error_not_a_panic() {
+    for bad in [
+        f64::NAN,
+        f64::INFINITY,
+        f64::NEG_INFINITY,
+        -1.0,
+        0.0,
+        1e20,
+        f64::MAX,
+    ] {
+        assert!(
+            collect("", ALL, bad).is_err(),
+            "interval {bad} should be rejected, not panic"
+        );
+    }
+}
