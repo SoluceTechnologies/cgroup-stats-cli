@@ -37,17 +37,6 @@ something that scrolls past in the log.
 cargo fmt --all
 ```
 
-There is a git hook that runs this for you. Enable it once per clone:
-
-```bash
-git config core.hooksPath .githooks
-```
-
-It formats the tree and re-stages the Rust files it changed. A file that has
-*unstaged* edits as well as staged ones is formatted but deliberately left
-unstaged, so your uncommitted work is never swept into a commit — the hook
-prints which files that applied to.
-
 **Tests:**
 
 ```bash
@@ -81,43 +70,6 @@ tests/
 
 Pure helpers belong in `src/utils/`. `src/task/` is for the data model, the
 collectors that talk to the kernel, and the renderers.
-
-## Conventions
-
-These are enforced by review, and several exist because of bugs that already
-shipped once.
-
-**Tests live in `tests/`, never in `#[cfg(test)]` modules.** There are no unit
-test modules in `src/`; please do not add any. Note the consequence: `tests/`
-sees only the public API, so a new private helper cannot be unit-tested
-directly — test it through the public function that calls it.
-
-**Never `.unwrap()` or `.expect()` on anything derived from a cgroup file.**
-These files can vanish mid-read when a container dies, and their contents come
-from the kernel, not from you. Return a `Result` and let the caller decide.
-
-**A limit is `Option<T>`, where `None` means unlimited.** This maps onto the v2
-files, where an absent limit is the literal string `max`. It holds in every
-struct and every renderer, and serialises to `null` in JSON.
-
-**A metric field is `Option<Result<T, String>>`.** `None` means the metric was
-not requested, `Err` means it was requested but is unavailable, and `Ok` is a
-reading. All three render differently, and that distinction is the point — see
-the next item.
-
-**Check that a metric's files exist before reading through `cgroups-rs`.** The
-crate cannot report a failed read: `memory_stat()` returns `usage_in_bytes == 0`
-for a missing `memory.current`, and `get_mem()` maps a failed read of
-`memory.max` onto `MaxValue::Max`, which is byte-identical to a genuine
-"unlimited". Without the `require()` precheck the root cgroup reports a
-confident `0 / unlimited` instead of `n/a`.
-
-**`anyhow` and `humansize` are deliberately excluded.** Errors use
-`Box<dyn std::error::Error>`; byte formatting is hand-written in
-`src/utils/bytes.rs`. Please do not reintroduce either.
-
-**Exit codes:** `1` for a runtime failure, `2` for an argument error (clap's
-default — do not remap it).
 
 ## Commits
 
