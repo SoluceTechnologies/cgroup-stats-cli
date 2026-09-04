@@ -10,6 +10,7 @@ fn stats() -> Stats {
             max_cores: Some(2.0),
         })),
         memory: Some(Ok(Memory {
+            high: None,
             current: 1_288_490_188,
             max: Some(4_294_967_296),
         })),
@@ -42,6 +43,7 @@ fn human_renders_every_metric() {
 fn unlimited_renders_as_the_word_unlimited() {
     let mut s = stats();
     s.memory = Some(Ok(Memory {
+        high: None,
         current: 8192,
         max: None,
     }));
@@ -86,6 +88,7 @@ fn io_with_no_devices_says_so_rather_than_printing_nothing() {
 fn json_uses_raw_values_and_null_for_unlimited() {
     let mut s = stats();
     s.memory = Some(Ok(Memory {
+        high: None,
         current: 8192,
         max: None,
     }));
@@ -194,4 +197,73 @@ fn all_devices_idle_renders_as_no_activity() {
     }));
     assert!(human(&s).contains("no activity"), "{}", human(&s));
     assert!(table(&s).contains("no activity"), "{}", table(&s));
+}
+
+#[test]
+fn memory_high_is_labelled_and_shown_beside_max() {
+    let mut s = stats();
+    s.memory = Some(Ok(Memory {
+        current: 1_288_490_188,
+        high: Some(2_147_483_648),
+        max: Some(4_294_967_296),
+    }));
+    assert!(
+        human(&s).contains("RAM:  1.2G / 2.0G high / 4.0G max"),
+        "{}",
+        human(&s)
+    );
+    assert!(table(&s).contains("2.0G high / 4.0G max"), "{}", table(&s));
+}
+
+#[test]
+fn memory_high_alone_does_not_render_as_unlimited() {
+    // A systemd unit with MemoryHigh= and no MemoryMax= is throttled in
+    // practice, so reporting "unlimited" here would be actively misleading.
+    let mut s = stats();
+    s.memory = Some(Ok(Memory {
+        current: 1_932_735_283,
+        high: Some(2_147_483_648),
+        max: None,
+    }));
+    let h = human(&s);
+    assert!(h.contains("RAM:  1.8G / 2.0G high"), "{h}");
+    assert!(
+        !h.contains("unlimited"),
+        "a cgroup capped by memory.high is not unlimited: {h}"
+    );
+}
+
+#[test]
+fn output_is_unchanged_when_memory_high_is_unset() {
+    let mut s = stats();
+    s.memory = Some(Ok(Memory {
+        current: 1_288_490_188,
+        high: None,
+        max: Some(4_294_967_296),
+    }));
+    assert!(human(&s).contains("RAM:  1.2G / 4.0G"), "{}", human(&s));
+
+    s.memory = Some(Ok(Memory {
+        current: 8192,
+        high: None,
+        max: None,
+    }));
+    assert!(
+        human(&s).contains("RAM:  8.0K / unlimited"),
+        "{}",
+        human(&s)
+    );
+}
+
+#[test]
+fn json_reports_high_alongside_max() {
+    let mut s = stats();
+    s.memory = Some(Ok(Memory {
+        current: 100,
+        high: Some(2048),
+        max: None,
+    }));
+    let v: serde_json::Value = serde_json::from_str(&json(&s)).unwrap();
+    assert_eq!(v["memory"]["high"], 2048);
+    assert!(v["memory"]["max"].is_null());
 }

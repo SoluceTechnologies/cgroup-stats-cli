@@ -46,6 +46,11 @@ dozens of idle rows with any real traffic buried among them. JSON is the
 fidelity layer and always reports every device, so a consumer can filter for
 itself.
 
+`memory.high` is reported beside `memory.max` whenever it is set. The two are
+different limits: the kernel reclaims aggressively and stalls a cgroup above
+`high`, but only OOM-kills above `max`. A systemd unit with `MemoryHigh=` and no
+`MemoryMax=` is capped in practice, so reporting it as unlimited would mislead.
+
 Requires cgroup v2 (unified hierarchy). Metrics whose files are absent — the
 root cgroup has no `memory.current`, for instance — report `n/a` rather than a
 misleading zero.

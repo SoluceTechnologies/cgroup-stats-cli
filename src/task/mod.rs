@@ -19,10 +19,6 @@ pub struct Stats {
 }
 
 pub fn collect(path: &str, sel: Selection, interval: f64) -> Result<Stats, Box<dyn Error>> {
-    // from_secs_f64 panics on negative, NaN, infinite AND overflowing values.
-    // try_from_secs_f64 rejects that set but accepts zero, so `filter` adds the
-    // "positive" half back. `collect` is public and cannot assume the CLI
-    // validated first.
     let sample_window = Duration::try_from_secs_f64(interval)
         .ok()
         .filter(|_| interval > 0.0)
@@ -31,9 +27,6 @@ pub fn collect(path: &str, sel: Selection, interval: f64) -> Result<Stats, Box<d
         })?;
 
     if !hierarchies::is_cgroup2_unified_mode() {
-        // is_cgroup2_unified_mode() statfs's /sys/fs/cgroup and returns false on
-        // ANY error, so "this host is v1" and "there is no cgroupfs here" look
-        // identical to it. Tell them apart before blaming v1.
         return Err(if Path::new("/sys/fs/cgroup").is_dir() {
             "cgroup v1 not supported (unified/v2 only)"
         } else {
@@ -50,16 +43,12 @@ pub fn collect(path: &str, sel: Selection, interval: f64) -> Result<Stats, Box<d
     }
     let cg = Cgroup::load(hierarchies::auto(), &rel);
 
-    // Take the first sample of every delta metric before sleeping, so both
-    // counters span the same window.
     let cpu_before = sel.cpu.then(|| metrics::read_cpu_usage(&dir));
     let io_before = sel.io.then(|| metrics::read_io(&dir));
 
     let elapsed = if sel.needs_sampling() {
         let t = Instant::now();
         std::thread::sleep(sample_window);
-        // Measured, not requested: sleep overshoots under load, and using the
-        // requested interval would inflate the reported rates.
         t.elapsed().as_secs_f64()
     } else {
         0.0

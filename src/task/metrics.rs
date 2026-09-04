@@ -16,6 +16,10 @@ pub struct Cpu {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct Memory {
     pub current: u64,
+    /// `memory.high`: the kernel reclaims aggressively and stalls the cgroup
+    /// above this, but does not OOM-kill. Distinct from `max`, and commonly the
+    /// only limit systemd sets.
+    pub high: Option<u64>,
     pub max: Option<u64>,
 }
 
@@ -38,14 +42,17 @@ pub struct Io {
 }
 
 pub fn collect_memory(cg: &Cgroup, dir: &Path) -> Result<Memory, String> {
-    require(dir, &["memory.current", "memory.max"])?;
+    // memory.high is required alongside the others so get_mem()'s habit of
+    // mapping a failed read onto MaxValue::Max cannot masquerade as "no limit".
+    require(dir, &["memory.current", "memory.high", "memory.max"])?;
     let c: &MemController = cg
         .controller_of()
         .ok_or_else(|| "memory controller unavailable".to_string())?;
-    let max = c.get_mem().map_err(|e| e.to_string())?.max;
+    let set = c.get_mem().map_err(|e| e.to_string())?;
     Ok(Memory {
         current: c.memory_stat().usage_in_bytes,
-        max: max_value_to_option(max),
+        high: max_value_to_option(set.high),
+        max: max_value_to_option(set.max),
     })
 }
 
@@ -69,24 +76,18 @@ pub fn read_cpu_usage(dir: &Path) -> Result<u64, String> {
 
 pub fn collect_cpu(dir: &Path, before: u64, after: u64, elapsed: f64) -> Result<Cpu, String> {
     require(dir, &["cpu.stat"])?;
-    // The root cgroup has cpu.stat but no cpu.max, so an absent file genuinely
-    // means "no quota". Any OTHER read error, or content we cannot parse, is a
-    // failure: reporting it as "unlimited" would be the confident-wrong-reading
-    // the precheck exists to prevent.
+
     let max_cores = match std::fs::read_to_string(dir.join("cpu.max")) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
         Err(e) => return Err(format!("cpu.max: {e}")),
         Ok(text) => match parse_cpu_max(&text) {
             Some((quota, period)) => Some(quota as f64 / period as f64),
-            // parse_cpu_max returns None for a real "max <period>" as well as
-            // for junk, so check which one this is.
+
             None if text.split_whitespace().next() == Some("max") => None,
             None => return Err(format!("cpu.max is unparseable: {:?}", text.trim())),
         },
     };
     Ok(Cpu {
-        // usage_usec is microseconds of CPU time, so dividing by elapsed
-        // seconds and 1e6 gives cores in use.
         used_cores: rate(before, after, elapsed) / 1_000_000.0,
         max_cores,
     })

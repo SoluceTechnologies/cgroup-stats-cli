@@ -1,9 +1,20 @@
 use crate::task::Stats;
-use crate::task::metrics::{Io, IoDevice};
+use crate::task::metrics::{Io, IoDevice, Memory};
 use crate::utils::bytes::{iec, limit};
 use comfy_table::{Table, presets::UTF8_FULL};
 use serde_json::{Map, Value, json};
 use std::fmt::Write;
+
+/// `memory.high` throttles where `memory.max` OOM-kills, so a cgroup with only
+/// `high` set is capped in practice and must not render as "unlimited". Both
+/// are labelled whenever `high` is set; output is unchanged when it is not.
+fn memory_limits(m: &Memory) -> String {
+    match (m.high, m.max) {
+        (None, max) => limit(max),
+        (Some(h), None) => format!("{} high", iec(h)),
+        (Some(h), Some(max)) => format!("{} high / {} max", iec(h), iec(max)),
+    }
+}
 
 /// Only readings appear. A metric that was not requested, or was requested but
 /// unavailable, is omitted — a consumer checking for a key is a cleaner
@@ -33,7 +44,7 @@ pub fn table(s: &Stats) -> String {
 
     if let Some(m) = &s.memory {
         match m {
-            Ok(m) => t.add_row(vec!["RAM".into(), iec(m.current), limit(m.max)]),
+            Ok(m) => t.add_row(vec!["RAM".into(), iec(m.current), memory_limits(m)]),
             Err(e) => t.add_row(vec!["RAM".into(), "n/a".into(), e.clone()]),
         };
     }
@@ -82,11 +93,6 @@ pub fn table(s: &Stats) -> String {
     t.to_string()
 }
 
-/// A leaf cgroup's `io.stat` lists only devices that cgroup has touched, but
-/// the root's enumerates every block device on the host — dozens of unbroken
-/// zero rows with any real traffic buried among them. The human-facing
-/// renderers exist to be glanceable and a rate view's job is showing what
-/// moves, so they filter. `json` keeps every device.
 fn active_devices(io: &Io) -> Vec<&IoDevice> {
     io.devices
         .iter()
@@ -99,7 +105,7 @@ pub fn human(s: &Stats) -> String {
 
     if let Some(m) = &s.memory {
         match m {
-            Ok(m) => writeln!(o, "RAM:  {} / {}", iec(m.current), limit(m.max)).unwrap(),
+            Ok(m) => writeln!(o, "RAM:  {} / {}", iec(m.current), memory_limits(m)).unwrap(),
             Err(e) => writeln!(o, "RAM:  n/a ({e})").unwrap(),
         }
     }

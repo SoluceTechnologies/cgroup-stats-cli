@@ -52,8 +52,6 @@ pub struct Args {
 
 fn positive_secs(s: &str) -> Result<f64, String> {
     let v: f64 = s.parse().map_err(|_| format!("`{s}` is not a number"))?;
-    // `v > 0.0` is false for NaN, and try_from_secs_f64 rejects infinite and
-    // overflowing values that from_secs_f64 would panic on.
     if v > 0.0 && Duration::try_from_secs_f64(v).is_ok() {
         Ok(v)
     } else {
