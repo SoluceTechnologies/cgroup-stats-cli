@@ -25,7 +25,7 @@ $ cgroup-stats-cli --path /sys/fs/cgroup/system.slice/nginx.service
 RAM:  1.2G / 4.0G
 CPU:  0.53 / 2.00 cores
 PIDs: 42 / 512
-IO:   sda  r 1.2M/s  w 340K/s
+IO:   sda  r 1.2M/s  w 340.0K/s
 ```
 
 Refreshing display:

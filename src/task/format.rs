@@ -4,7 +4,10 @@ use comfy_table::{Table, presets::UTF8_FULL};
 use serde_json::{Map, Value, json};
 use std::fmt::Write;
 
-/// Format bytes with IEC units, matching `numfmt --to=iec`.
+/// Format bytes with IEC units, always to one decimal place above `B` (e.g.
+/// `1.5K`, `4.0G`). This is deliberately fixed-width — unlike `numfmt
+/// --to=iec`, which uses three significant digits and would print `340K`
+/// where this prints `340.0K` — so columns do not jump around under `watch`.
 pub fn iec(bytes: u64) -> String {
     const UNITS: [&str; 6] = ["B", "K", "M", "G", "T", "P"];
     let mut v = bytes as f64;
@@ -212,6 +215,7 @@ mod tests {
         assert_eq!(iec(0), "0B");
         assert_eq!(iec(1023), "1023B");
         assert_eq!(iec(1024), "1.0K");
+        assert_eq!(iec(1025), "1.0K");
         assert_eq!(iec(1536), "1.5K");
         assert_eq!(iec(1024 * 1024), "1.0M");
         assert_eq!(iec(4 * 1024 * 1024 * 1024), "4.0G");

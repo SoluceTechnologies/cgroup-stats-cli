@@ -5,7 +5,7 @@ use crate::cli::{Selection, normalize_path};
 use cgroups_rs::fs::{Cgroup, hierarchies};
 use metrics::{Cpu, Io, Memory, Pids};
 use std::error::Error;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 #[derive(Debug)]
@@ -18,23 +18,35 @@ pub struct Stats {
 }
 
 pub fn collect(path: &str, sel: Selection, interval: f64) -> Result<Stats, Box<dyn Error>> {
-    // Duration::from_secs_f64 panics on a negative, NaN or infinite value, and
-    // `collect` is public — it must not depend on the CLI having validated first.
-    if !interval.is_finite() || interval <= 0.0 {
-        return Err(format!(
-            "interval must be a positive, finite number of seconds, got {interval}"
-        )
-        .into());
-    }
+    // Duration::from_secs_f64 panics on negative, NaN, infinite AND overflowing
+    // values. try_from_secs_f64 rejects that set, but unlike the CLI's
+    // positive_secs parser it accepts zero, so `filter` adds back the
+    // "positive" half of "positive, finite". Binding the result here means
+    // the sleep below cannot panic. `collect` is public, so it must not
+    // assume the CLI validated first.
+    let sample_window = Duration::try_from_secs_f64(interval)
+        .ok()
+        .filter(|_| interval > 0.0)
+        .ok_or_else(|| {
+            format!("interval must be a positive, finite number of seconds, got {interval}")
+        })?;
 
     if !hierarchies::is_cgroup2_unified_mode() {
-        return Err("cgroup v1 not supported (unified/v2 only)".into());
+        // is_cgroup2_unified_mode() statfs's /sys/fs/cgroup and returns false on
+        // ANY error, so "this host is v1" and "there is no cgroupfs here" look
+        // identical to it. Tell them apart before blaming v1.
+        return Err(if Path::new("/sys/fs/cgroup").is_dir() {
+            "cgroup v1 not supported (unified/v2 only)"
+        } else {
+            "no cgroup filesystem mounted at /sys/fs/cgroup"
+        }
+        .into());
     }
 
     let root = hierarchies::auto().root();
     let rel = normalize_path(path, &root);
     let dir: PathBuf = root.join(&rel);
-    if !dir.is_dir() {
+    if !dir.is_dir() || !dir.join("cgroup.controllers").exists() {
         return Err(format!("cgroup not found: {}", dir.display()).into());
     }
     let cg = Cgroup::load(hierarchies::auto(), &rel);
@@ -46,7 +58,7 @@ pub fn collect(path: &str, sel: Selection, interval: f64) -> Result<Stats, Box<d
 
     let elapsed = if sel.needs_sampling() {
         let t = Instant::now();
-        std::thread::sleep(Duration::from_secs_f64(interval));
+        std::thread::sleep(sample_window);
         // Measured, not requested: sleep overshoots under load, and using the
         // requested interval would inflate the reported rates.
         t.elapsed().as_secs_f64()
@@ -160,7 +172,15 @@ mod tests {
     fn a_non_finite_or_non_positive_interval_is_an_error_not_a_panic() {
         // No v2() guard: the interval check runs before any host inspection,
         // so this test is meaningful on every machine.
-        for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, -1.0, 0.0] {
+        for bad in [
+            f64::NAN,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            -1.0,
+            0.0,
+            1e20,
+            f64::MAX,
+        ] {
             assert!(
                 collect("", ALL, bad).is_err(),
                 "interval {bad} should be rejected, not panic"

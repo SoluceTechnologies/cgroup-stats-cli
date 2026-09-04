@@ -170,10 +170,21 @@ pub fn read_cpu_usage(dir: &Path) -> Result<u64, String> {
 /// still meaningful, the limit is simply unknown and reported as unlimited.
 pub fn collect_cpu(dir: &Path, before: u64, after: u64, elapsed: f64) -> Result<Cpu, String> {
     require(dir, &["cpu.stat"])?;
-    let max_cores = read(dir, "cpu.max")
-        .ok()
-        .and_then(|t| parse_cpu_max(&t))
-        .map(|(q, p)| q as f64 / p as f64);
+    // The root cgroup has cpu.stat but no cpu.max, so an absent file genuinely
+    // means "no quota". Any OTHER read error, or content we cannot parse, is a
+    // failure: reporting it as "unlimited" would be the confident-wrong-reading
+    // this module exists to prevent.
+    let max_cores = match std::fs::read_to_string(dir.join("cpu.max")) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => return Err(format!("cpu.max: {e}")),
+        Ok(text) => match parse_cpu_max(&text) {
+            Some((quota, period)) => Some(quota as f64 / period as f64),
+            // parse_cpu_max returns None for a real "max <period>" as well as
+            // for junk, so check which one this is.
+            None if text.split_whitespace().next() == Some("max") => None,
+            None => return Err(format!("cpu.max is unparseable: {:?}", text.trim())),
+        },
+    };
     Ok(Cpu {
         // usage_usec is microseconds of CPU time; dividing by elapsed seconds
         // and 1e6 gives cores in use.
@@ -428,6 +439,26 @@ cost.usage=123 cost.wait=0 cost.indebt=0 cost.indelay=0\n";
         let d = tmpdir("cpu-unlimited");
         fs::write(d.join("cpu.stat"), CPU_STAT).unwrap();
         fs::write(d.join("cpu.max"), "max 100000\n").unwrap();
+        assert_eq!(collect_cpu(&d, 0, 0, 1.0).unwrap().max_cores, None);
+    }
+
+    #[test]
+    fn collect_cpu_errors_on_an_unparseable_cpu_max_rather_than_claiming_unlimited() {
+        let d = tmpdir("cpu-max-junk");
+        fs::write(d.join("cpu.stat"), CPU_STAT).unwrap();
+        fs::write(d.join("cpu.max"), "garbage\n").unwrap();
+        let err = collect_cpu(&d, 0, 0, 1.0).unwrap_err();
+        assert!(
+            err.contains("cpu.max"),
+            "error should name the file, got: {err}"
+        );
+    }
+
+    #[test]
+    fn collect_cpu_treats_an_absent_cpu_max_as_unlimited() {
+        // The root cgroup's shape: cpu.stat present, cpu.max absent.
+        let d = tmpdir("cpu-max-absent");
+        fs::write(d.join("cpu.stat"), CPU_STAT).unwrap();
         assert_eq!(collect_cpu(&d, 0, 0, 1.0).unwrap().max_cores, None);
     }
 

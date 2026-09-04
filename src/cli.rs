@@ -1,5 +1,6 @@
 use clap::{Parser, ValueEnum};
 use std::path::Path;
+use std::time::Duration;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
 pub enum Format {
@@ -36,7 +37,13 @@ pub struct Args {
     pub io: bool,
 
     /// Sampling window in seconds for CPU and IO deltas
-    #[arg(short = 'i', long, default_value_t = 1.0, value_parser = positive_secs)]
+    #[arg(
+        short = 'i',
+        long,
+        default_value_t = 1.0,
+        value_parser = positive_secs,
+        value_name = "SECS"
+    )]
     pub interval: f64,
 
     /// Output format
@@ -46,11 +53,16 @@ pub struct Args {
 
 fn positive_secs(s: &str) -> Result<f64, String> {
     let v: f64 = s.parse().map_err(|_| format!("`{s}` is not a number"))?;
-    if v.is_finite() && v > 0.0 {
+    // `v > 0.0` is false for NaN, so this also rejects NaN without a separate
+    // is_finite() check. Duration::try_from_secs_f64 additionally rejects
+    // infinite and overflowing values (Duration::from_secs_f64 panics on
+    // those), so this is exactly the set of values the sleep in `collect`
+    // can safely convert.
+    if v > 0.0 && Duration::try_from_secs_f64(v).is_ok() {
         Ok(v)
     } else {
         Err(format!(
-            "interval must be a positive number of seconds, got `{s}`"
+            "interval must be a positive, representable number of seconds, got `{s}`"
         ))
     }
 }
@@ -93,10 +105,11 @@ impl Args {
     }
 }
 
-/// Strip the hierarchy mount point so both `/sys/fs/cgroup/a/b` and `a/b`
-/// resolve to the `a/b` that `Cgroup::load` expects. Uses the root reported by
-/// the running hierarchy rather than a hardcoded prefix, so non-standard mount
-/// points work unchanged.
+/// Strip the hierarchy root so both `/sys/fs/cgroup/a/b` and `a/b` resolve to
+/// the `a/b` that `Cgroup::load` expects. The strip is component-aware, so a
+/// sibling directory that merely shares the root's leading characters (e.g.
+/// `/sys/fs/cgroup2/foo`) is not silently rewritten into a child path of the
+/// root.
 pub fn normalize_path(path: &str, root: &Path) -> String {
     let p = Path::new(path);
     let rel = p.strip_prefix(root).unwrap_or(p);
@@ -132,6 +145,9 @@ mod tests {
 
     #[test]
     fn normalize_respects_a_non_standard_mount_point() {
+        // The running hierarchy always reports /sys/fs/cgroup as its root, so
+        // this configuration is not actually reachable; it exercises the
+        // function itself rather than a real configuration.
         let root = Path::new("/mnt/cg2");
         assert_eq!(normalize_path("/mnt/cg2/svc.slice", root), "svc.slice");
     }
@@ -196,5 +212,13 @@ mod tests {
                 "{bad} should be rejected"
             );
         }
+    }
+
+    #[test]
+    fn interval_rejects_a_finite_but_unrepresentable_value() {
+        // Duration::from_secs_f64 panics on overflow as well as on NaN and
+        // infinity; 1e20 seconds is finite and positive but not representable.
+        assert!(Args::try_parse_from(["x", "--path", "p", "-i", "1e20"]).is_err());
+        assert!(Args::try_parse_from(["x", "--path", "p", "-i", "99999999999999999999"]).is_err());
     }
 }
