@@ -1,0 +1,23 @@
+name: Lint
+
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+
+jobs:
+  clippy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      # --all-targets covers tests/ and benches, not just the library and
+      # binary; -D warnings makes a lint fail the job rather than scroll past.
+      - name: cargo clippy
+        run: cargo clippy --all-targets --all-features --locked -- -D warnings
