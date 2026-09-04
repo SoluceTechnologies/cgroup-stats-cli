@@ -100,27 +100,3 @@ Write the body to explain *why*, not what — the diff already says what.
   cutting a release.
 - Keep the working tree clean of generated files. `docs/` is gitignored on
   purpose.
-
-## Releases
-
-Merging a pull request into `main` runs `.github/workflows/release.yml`, which
-derives the version from the commit history, creates a draft GitHub release,
-then builds and attaches:
-
-- macOS tarballs for `aarch64-apple-darwin` and `x86_64-apple-darwin`
-- Linux tarballs and `.deb` packages for `x86_64` and `aarch64`
-- an apt repository published to the `gh-pages` branch
-
-The release is only published once every one of those succeeds.
-
-## Reporting bugs
-
-Include the output of the command you ran, plus:
-
-```bash
-stat -fc %T /sys/fs/cgroup && cat /sys/fs/cgroup/cgroup.controllers
-```
-
-If the problem involves a specific cgroup, the contents of its `cpu.max`,
-`cpu.stat`, `memory.current`, `memory.high`, `memory.max` and `io.stat` are
-what make it reproducible.
