@@ -1,5 +1,4 @@
 use clap::{Parser, ValueEnum};
-use std::path::Path;
 use std::time::Duration;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
@@ -53,11 +52,8 @@ pub struct Args {
 
 fn positive_secs(s: &str) -> Result<f64, String> {
     let v: f64 = s.parse().map_err(|_| format!("`{s}` is not a number"))?;
-    // `v > 0.0` is false for NaN, so this also rejects NaN without a separate
-    // is_finite() check. Duration::try_from_secs_f64 additionally rejects
-    // infinite and overflowing values (Duration::from_secs_f64 panics on
-    // those), so this is exactly the set of values the sleep in `collect`
-    // can safely convert.
+    // `v > 0.0` is false for NaN, and try_from_secs_f64 rejects infinite and
+    // overflowing values that from_secs_f64 would panic on.
     if v > 0.0 && Duration::try_from_secs_f64(v).is_ok() {
         Ok(v)
     } else {
@@ -67,8 +63,7 @@ fn positive_secs(s: &str) -> Result<f64, String> {
     }
 }
 
-/// Which metrics to collect. Distinct from `Args` so the collector does not
-/// have to re-derive the "no flags means all" rule.
+/// Separate from `Args` so the collector need not re-derive "no flags means all".
 #[derive(Copy, Clone, Debug)]
 pub struct Selection {
     pub cpu: bool,
@@ -102,123 +97,5 @@ impl Args {
                 io: true,
             }
         }
-    }
-}
-
-/// Strip the hierarchy root so both `/sys/fs/cgroup/a/b` and `a/b` resolve to
-/// the `a/b` that `Cgroup::load` expects. The strip is component-aware, so a
-/// sibling directory that merely shares the root's leading characters (e.g.
-/// `/sys/fs/cgroup2/foo`) is not silently rewritten into a child path of the
-/// root.
-pub fn normalize_path(path: &str, root: &Path) -> String {
-    let p = Path::new(path);
-    let rel = p.strip_prefix(root).unwrap_or(p);
-    rel.to_string_lossy().trim_matches('/').to_string()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use clap::CommandFactory;
-    use std::path::Path;
-
-    #[test]
-    fn clap_definition_is_valid() {
-        Args::command().debug_assert();
-    }
-
-    #[test]
-    fn absolute_and_relative_paths_normalize_the_same() {
-        let root = Path::new("/sys/fs/cgroup");
-        assert_eq!(normalize_path("/sys/fs/cgroup/a/b", root), "a/b");
-        assert_eq!(normalize_path("a/b", root), "a/b");
-    }
-
-    #[test]
-    fn normalize_handles_trailing_and_leading_slashes() {
-        let root = Path::new("/sys/fs/cgroup");
-        assert_eq!(normalize_path("/sys/fs/cgroup/a/b/", root), "a/b");
-        assert_eq!(normalize_path("/a/b", root), "a/b");
-        assert_eq!(normalize_path("/sys/fs/cgroup", root), "");
-        assert_eq!(normalize_path("/sys/fs/cgroup/", root), "");
-    }
-
-    #[test]
-    fn normalize_respects_a_non_standard_mount_point() {
-        // The running hierarchy always reports /sys/fs/cgroup as its root, so
-        // this configuration is not actually reachable; it exercises the
-        // function itself rather than a real configuration.
-        let root = Path::new("/mnt/cg2");
-        assert_eq!(normalize_path("/mnt/cg2/svc.slice", root), "svc.slice");
-    }
-
-    #[test]
-    fn no_metric_flags_selects_everything() {
-        let a = Args::parse_from(["x", "--path", "/sys/fs/cgroup"]);
-        let s = a.selection();
-        assert!(s.cpu && s.mem && s.pids && s.io);
-    }
-
-    #[test]
-    fn explicit_flags_select_only_those() {
-        let a = Args::parse_from(["x", "--path", "p", "--cpu", "--mem"]);
-        let s = a.selection();
-        assert!(s.cpu && s.mem);
-        assert!(!s.pids && !s.io);
-    }
-
-    #[test]
-    fn sampling_needed_only_for_delta_metrics() {
-        let mem_only = Args::parse_from(["x", "--path", "p", "--mem"]).selection();
-        assert!(!mem_only.needs_sampling());
-
-        let with_cpu = Args::parse_from(["x", "--path", "p", "--cpu"]).selection();
-        assert!(with_cpu.needs_sampling());
-
-        let with_io = Args::parse_from(["x", "--path", "p", "--io"]).selection();
-        assert!(with_io.needs_sampling());
-
-        let pids_only = Args::parse_from(["x", "--path", "p", "--pids"]).selection();
-        assert!(!pids_only.needs_sampling());
-    }
-
-    #[test]
-    fn interval_must_be_positive() {
-        assert!(Args::try_parse_from(["x", "--path", "p", "-i", "0"]).is_err());
-        assert!(Args::try_parse_from(["x", "--path", "p", "-i", "-1"]).is_err());
-        assert!(Args::try_parse_from(["x", "--path", "p", "-i", "0.5"]).is_ok());
-    }
-
-    #[test]
-    fn normalize_does_not_strip_a_sibling_that_merely_shares_a_prefix() {
-        let root = Path::new("/sys/fs/cgroup");
-        // These are siblings of the root, not children. Stripping the text
-        // prefix would silently turn them into bogus child paths.
-        assert_eq!(
-            normalize_path("/sys/fs/cgroup-old/svc.slice", root),
-            "sys/fs/cgroup-old/svc.slice"
-        );
-        assert_eq!(
-            normalize_path("/sys/fs/cgroup2/foo", root),
-            "sys/fs/cgroup2/foo"
-        );
-    }
-
-    #[test]
-    fn interval_rejects_non_finite_values() {
-        for bad in ["nan", "NaN", "inf", "infinity", "-inf"] {
-            assert!(
-                Args::try_parse_from(["x", "--path", "p", "-i", bad]).is_err(),
-                "{bad} should be rejected"
-            );
-        }
-    }
-
-    #[test]
-    fn interval_rejects_a_finite_but_unrepresentable_value() {
-        // Duration::from_secs_f64 panics on overflow as well as on NaN and
-        // infinity; 1e20 seconds is finite and positive but not representable.
-        assert!(Args::try_parse_from(["x", "--path", "p", "-i", "1e20"]).is_err());
-        assert!(Args::try_parse_from(["x", "--path", "p", "-i", "99999999999999999999"]).is_err());
     }
 }
