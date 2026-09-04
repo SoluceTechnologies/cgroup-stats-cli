@@ -1,7 +1,5 @@
 use cgroups_rs::fs::MaxValue;
 
-/// Read one value out of a flat-keyed cgroup file (`key value` per line), the
-/// format used by `cpu.stat`, `memory.stat` and friends.
 pub fn parse_flat_key(text: &str, key: &str) -> Option<u64> {
     text.lines().find_map(|line| {
         let mut fields = line.split_whitespace();
@@ -12,9 +10,6 @@ pub fn parse_flat_key(text: &str, key: &str) -> Option<u64> {
     })
 }
 
-/// Parse `cpu.max`, which holds `<quota> <period>` where quota may be the
-/// literal `max`. Returns `None` for unlimited, for unparseable content, and
-/// for a zero period, which would otherwise hand the caller a divide-by-zero.
 pub fn parse_cpu_max(text: &str) -> Option<(u64, u64)> {
     let mut fields = text.split_whitespace();
     let quota = fields.next()?;
@@ -25,7 +20,6 @@ pub fn parse_cpu_max(text: &str) -> Option<(u64, u64)> {
     Some((quota.parse().ok()?, period))
 }
 
-/// One device's counters as they appear in `io.stat`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RawIo {
     pub device: String,
@@ -33,11 +27,6 @@ pub struct RawIo {
     pub wbytes: u64,
 }
 
-/// Parse `io.stat`: `<major>:<minor> key=value key=value ...`.
-///
-/// Unlike the parser in cgroups-rs this does not require exactly seven fields,
-/// so lines carrying iocost keys survive, and it keeps the device as text
-/// rather than parsing the minor into an `i16` that overflows past 32767.
 pub fn parse_io_stat(text: &str) -> Vec<RawIo> {
     text.lines()
         .filter_map(|line| {
@@ -64,9 +53,6 @@ pub fn parse_io_stat(text: &str) -> Vec<RawIo> {
         .collect()
 }
 
-/// Saturating: a cgroup recreated between samples resets its counters, which
-/// would otherwise underflow. The guard is written as `!is_finite()` rather
-/// than `<= 0.0` because the latter is false for NaN.
 pub fn rate(before: u64, after: u64, elapsed_secs: f64) -> f64 {
     if !elapsed_secs.is_finite() || elapsed_secs <= 0.0 {
         return 0.0;

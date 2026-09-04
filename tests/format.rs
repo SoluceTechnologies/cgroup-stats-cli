@@ -31,8 +31,6 @@ fn stats() -> Stats {
 #[test]
 fn human_renders_every_metric() {
     let out = human(&stats());
-    // Pin the full line, not loose substrings: checking "1.2G" and "4.0G"
-    // independently would pass even if current and max were swapped.
     assert!(out.contains("RAM:  1.2G / 4.0G"), "{out}");
     assert!(out.contains("CPU:  0.53 / 2.00 cores"), "{out}");
     assert!(out.contains("PIDs: 42 / 512"), "{out}");
@@ -179,7 +177,6 @@ fn both_renderers_hide_idle_devices_but_json_keeps_them() {
         "idle device must not appear in table output: {table_out}"
     );
 
-    // JSON is the fidelity layer and keeps every device.
     let parsed: serde_json::Value = serde_json::from_str(&json(&stats)).unwrap();
     let devs = parsed["io"]["devices"].as_array().unwrap();
     assert_eq!(devs.len(), 2, "json must keep idle devices: {parsed}");
@@ -221,8 +218,6 @@ fn memory_high_is_labelled_and_shown_beside_max() {
 
 #[test]
 fn memory_high_alone_does_not_render_as_unlimited() {
-    // A systemd unit with MemoryHigh= and no MemoryMax= is throttled in
-    // practice, so reporting "unlimited" here would be actively misleading.
     let mut stats = stats();
     stats.memory = Some(Ok(Memory {
         current: 1_932_735_283,

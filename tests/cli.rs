@@ -3,7 +3,6 @@ use std::process::Command;
 use std::time::Instant;
 
 fn bin() -> PathBuf {
-    // target/debug/deps/<test binary> -> target/debug/cgroup-stats-cli
     let mut path = std::env::current_exe().unwrap();
     path.pop();
     if path.ends_with("deps") {
@@ -16,8 +15,6 @@ fn is_v2() -> bool {
     PathBuf::from("/sys/fs/cgroup/cgroup.controllers").exists()
 }
 
-/// The root cgroup has no cpu.max, so a leaf must be found for a meaningful
-/// end-to-end check. Returns None when nothing suitable exists.
 fn leaf() -> Option<PathBuf> {
     let root = PathBuf::from("/sys/fs/cgroup");
     std::fs::read_dir(&root).ok()?.flatten().find_map(|entry| {

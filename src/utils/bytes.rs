@@ -1,7 +1,4 @@
-/// Format bytes with IEC units, always to one decimal place above `B` (`1.5K`,
-/// `4.0G`). Deliberately fixed-width — unlike `numfmt --to=iec`, which uses
-/// three significant digits and prints `340K` where this prints `340.0K` — so
-/// columns do not jump around under `watch`.
+
 pub fn iec(bytes: u64) -> String {
     const UNITS: [&str; 6] = ["B", "K", "M", "G", "T", "P"];
     let mut value = bytes as f64;

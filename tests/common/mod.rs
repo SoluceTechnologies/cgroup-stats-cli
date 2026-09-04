@@ -1,11 +1,7 @@
-// Fixtures shared across the integration test binaries. Living under
-// tests/common/ rather than tests/ keeps cargo from compiling it as a test
-// binary of its own.
 #![allow(dead_code)]
 
 use std::path::PathBuf;
 
-/// Real content from /sys/fs/cgroup/cpu.stat on a 6.x kernel.
 pub const CPU_STAT: &str = "\
 usage_usec 38354643000
 user_usec 29454747000

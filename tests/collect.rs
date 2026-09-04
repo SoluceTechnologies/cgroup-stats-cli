@@ -35,8 +35,6 @@ fn memory_only_does_not_sleep() {
 
 #[test]
 fn root_cgroup_reports_memory_unavailable_not_zero() {
-    // Regression guard. The root cgroup has no memory.current; without the
-    // existence precheck cgroups-rs reports a confident 0 / unlimited.
     if !v2() {
         eprintln!("skipped: host is not cgroup v2");
         return;
@@ -75,8 +73,6 @@ fn a_missing_cgroup_is_a_fatal_error() {
 
 #[test]
 fn a_non_finite_or_non_positive_interval_is_an_error_not_a_panic() {
-    // No v2() guard: the interval check runs before any host inspection,
-    // so this test is meaningful on every machine.
     for bad in [
         f64::NAN,
         f64::INFINITY,

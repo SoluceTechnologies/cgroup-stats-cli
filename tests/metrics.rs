@@ -30,7 +30,6 @@ fn collect_cpu_computes_cores_from_the_delta() {
     let dir = tmpdir("cpu-cores");
     fs::write(dir.join("cpu.stat"), CPU_STAT).unwrap();
     fs::write(dir.join("cpu.max"), "200000 100000\n").unwrap();
-    // Half a core-second of usage over one wall second.
     let cpu = collect_cpu(&dir, 1_000_000, 1_500_000, 1.0).unwrap();
     assert!(
         (cpu.used_cores - 0.5).abs() < 1e-9,
@@ -70,7 +69,6 @@ fn collect_cpu_treats_an_absent_cpu_max_as_unlimited() {
 
 #[test]
 fn collect_cpu_without_cpu_max_still_reports_usage() {
-    // The root cgroup has cpu.stat but no cpu.max. Usage is still valid.
     let dir = tmpdir("cpu-no-max");
     fs::write(dir.join("cpu.stat"), CPU_STAT).unwrap();
     let cpu = collect_cpu(&dir, 0, 1_000_000, 1.0).unwrap();

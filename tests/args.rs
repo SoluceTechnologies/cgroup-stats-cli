@@ -55,8 +55,6 @@ fn interval_rejects_non_finite_values() {
 
 #[test]
 fn interval_rejects_a_finite_but_unrepresentable_value() {
-    // Duration::from_secs_f64 panics on overflow as well as on NaN and
-    // infinity; 1e20 seconds is finite and positive but not representable.
     assert!(Args::try_parse_from(["x", "--path", "p", "-i", "1e20"]).is_err());
     assert!(Args::try_parse_from(["x", "--path", "p", "-i", "99999999999999999999"]).is_err());
 }

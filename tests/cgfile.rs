@@ -58,9 +58,6 @@ fn normalize_handles_trailing_and_leading_slashes() {
 
 #[test]
 fn normalize_respects_a_non_standard_mount_point() {
-    // The running hierarchy always reports /sys/fs/cgroup as its root, so
-    // this configuration is not actually reachable; it exercises the
-    // function itself rather than a real configuration.
     let root = Path::new("/mnt/cg2");
     assert_eq!(normalize_path("/mnt/cg2/svc.slice", root), "svc.slice");
 }
@@ -68,8 +65,6 @@ fn normalize_respects_a_non_standard_mount_point() {
 #[test]
 fn normalize_does_not_strip_a_sibling_that_merely_shares_a_prefix() {
     let root = Path::new("/sys/fs/cgroup");
-    // These are siblings of the root, not children. Stripping the text
-    // prefix would silently turn them into bogus child paths.
     assert_eq!(
         normalize_path("/sys/fs/cgroup-old/svc.slice", root),
         "sys/fs/cgroup-old/svc.slice"
